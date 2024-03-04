@@ -9,14 +9,14 @@ use toml::Table;
 #[derive(Debug)]
 #[allow(dead_code)]
 pub struct ProgramOptions {
-    name: String,
-    path: PathBuf,
-    target_path: String,
-    is_installed_cmd: Option<String>,
+    pub name: String,
+    pub path: PathBuf,
+    pub target_path: String,
+    pub is_installed_cmd: Option<String>,
 }
 
 impl ProgramOptions {
-    fn new(
+    pub fn new(
         name: String,
         path: PathBuf,
         target_path: String,
@@ -61,8 +61,9 @@ fn parse_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
 
         programs.push((key, path));
     }
-
     let mage_config = mage_config.context("No magefile found")?;
+
+    programs.retain(|(name, _)| mage_config.contains_key(name));
 
     let mut result = vec![];
 
@@ -77,11 +78,11 @@ fn parse_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
 fn create_program_options(magefile: &Table, name: String, path: PathBuf) -> Result<ProgramOptions> {
     let program = magefile
         .get(&name)
-        .context(format!("No entry for {}", name))?;
+        .context(format!("No entry in magefile for `{}`", name))?;
 
     let target_path = program
         .get("target_path")
-        .context(format!("No target_path for {}", name))?
+        .context(format!("No target_path for `{}`", name))?
         .to_string();
 
     let is_installed_cmd = program.get("is_installed_cmd").map(|cmd| cmd.to_string());
@@ -100,7 +101,7 @@ fn clone_repo(url: &str, path: &str) -> Result<ReadDir> {
     }
 
     std::process::Command::new("git")
-        .args(&["clone", url, path])
+        .args(["clone", url, path])
         .output()
         .context(format!("Failed to clone repo `{url}` into `{path}`"))?;
 
