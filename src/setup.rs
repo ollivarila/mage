@@ -137,6 +137,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_clone_repo() {
         fs::remove_dir_all("/tmp/mage").unwrap_or_default();
         clone_repo("https://github.com/ollivarila/brainfckr.git", "/tmp/mage").unwrap();

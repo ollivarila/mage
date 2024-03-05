@@ -5,11 +5,26 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::os::unix::fs::symlink;
 
 pub trait Configure<T> {
-    fn configure(&self, bar: &ProgressBar) -> Result<T>;
+    fn configure(&self, bar: &impl Bar) -> Result<T>;
+}
+
+pub trait Bar {
+    fn set_message(&self, msg: impl Into<String>);
+    fn finish_with_message(&self, msg: impl Into<String>);
+}
+
+impl Bar for ProgressBar {
+    fn finish_with_message(&self, msg: impl Into<String>) {
+        self.finish_with_message(msg.into())
+    }
+
+    fn set_message(&self, msg: impl Into<String>) {
+        self.set_message(msg.into())
+    }
 }
 
 impl Configure<bool> for ProgramOptions {
-    fn configure(&self, bar: &ProgressBar) -> Result<bool> {
+    fn configure(&self, bar: &impl Bar) -> Result<bool> {
         bar.set_message(format!("Configuring {}", self.name));
 
         if file_or_dir_exists(&self.target_path) {
@@ -42,30 +57,27 @@ fn check_installed(cmd: &str) -> bool {
 }
 
 impl Configure<Vec<String>> for Vec<ProgramOptions> {
-    fn configure(&self, _: &ProgressBar) -> Result<Vec<String>> {
+    fn configure(&self, _: &impl Bar) -> Result<Vec<String>> {
         let mp = MultiProgress::new();
         let not_installed = self
             .par_iter()
-            .map(|program| {
+            .filter_map(|program| {
                 let bar = ProgressBar::new_spinner();
                 let bar = mp.add(bar);
                 match program.configure(&bar) {
-                    Ok(installed) => (program.name.clone(), installed),
+                    Ok(installed) => {
+                        if !installed {
+                            Some(program.name.clone())
+                        } else {
+                            None
+                        }
+                    }
                     Err(e) => {
                         eprintln!("Failed to configure {}: {}", program.name, e);
-                        (program.name.clone(), false)
+                        None
                     }
                 }
             })
-            .filter_map(
-                |(name, installed)| {
-                    if !installed {
-                        Some(name)
-                    } else {
-                        None
-                    }
-                },
-            )
             .collect();
 
         Ok(not_installed)
@@ -92,6 +104,13 @@ mod tests {
         }
     }
 
+    struct MockBar;
+
+    impl Bar for MockBar {
+        fn finish_with_message(&self, _: impl Into<String>) {}
+        fn set_message(&self, _: impl Into<String>) {}
+    }
+
     fn setup() -> TestContext {
         let dotfiles_path = PathBuf::from("test-dotfiles").canonicalize().unwrap();
         let target_path = "/tmp/example.config".to_string();
@@ -112,7 +131,7 @@ mod tests {
     #[test]
     fn test_configure_program_with_file() {
         let ctx = setup();
-        let bar = ProgressBar::new_spinner();
+        let bar = MockBar;
         let installed = ctx.opts.configure(&bar).unwrap();
 
         assert!(file_or_dir_exists(&ctx.target_path));
@@ -123,7 +142,8 @@ mod tests {
     fn test_not_installed() {
         let mut ctx = setup();
         ctx.opts.is_installed_cmd = Some("false".to_string());
-        let installed = ctx.opts.configure(&ProgressBar::new_spinner()).unwrap();
+        let bar = MockBar;
+        let installed = ctx.opts.configure(&bar).unwrap();
         assert!(!installed)
     }
 
