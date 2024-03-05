@@ -113,9 +113,25 @@ mod tests {
 
     use super::*;
 
+    struct Context;
+
+    impl Drop for Context {
+        fn drop(&mut self) {
+            fs::remove_dir_all("/tmp/mage").unwrap_or_default();
+        }
+    }
+
+    fn setup() -> Context {
+        if fs::read_dir("/tmp/mage").is_ok() {
+            fs::remove_dir_all("/tmp/mage").unwrap_or_default();
+        }
+        fs::create_dir("/tmp/mage").unwrap();
+        Context
+    }
+
     #[test]
     fn test_parse_dotfiles() {
-        fs::create_dir("/tmp/mage").expect("failed to create temp dir");
+        let _ctx = setup();
 
         // let args = Args {
         //     path: "/tmp/mage".to_string(),
@@ -124,7 +140,6 @@ mod tests {
         let dotfiles = fs::read_dir("test-dotfiles").unwrap();
         let programs = parse_dotfiles(dotfiles).unwrap();
 
-        fs::remove_dir_all("/tmp/mage").unwrap_or_default();
         assert_eq!(programs.len(), 1);
     }
 
