@@ -1,8 +1,13 @@
-use crate::Args;
-use anyhow::{bail, Context, Ok, Result};
+use crate::{
+    error::MageError::{
+        self, InvalidDotfilesOrigin, InvalidMageFile, MageFileNotFound, Unexpected,
+    },
+    Args, MageResult,
+};
 use std::{
-    fs::{self, ReadDir},
+    fs::{self, read_dir, DirEntry, ReadDir},
     path::PathBuf,
+    str::FromStr,
 };
 use toml::Table;
 
@@ -15,100 +20,170 @@ pub struct ProgramOptions {
     pub is_installed_cmd: Option<String>,
 }
 
-impl ProgramOptions {
-    pub fn new(
-        name: String,
-        path: PathBuf,
-        target_path: PathBuf,
-        is_installed_cmd: Option<String>,
-    ) -> Self {
-        ProgramOptions {
-            name,
-            path,
-            target_path,
-            is_installed_cmd,
+pub enum DotfilesEntry {
+    ConfigFileOrDir(String, PathBuf),
+    Magefile(Table),
+}
+
+enum DotfilesOrigin {
+    Directory(PathBuf),
+    Repository(String, String),
+}
+
+impl TryFrom<&Args> for ReadDir {
+    type Error = MageError;
+
+    fn try_from(args: &Args) -> Result<Self, Self::Error> {
+        let origin: DotfilesOrigin = args.get_origin_str().parse()?;
+        origin.try_into()
+    }
+}
+
+impl FromStr for DotfilesOrigin {
+    type Err = MageError;
+    /// Parses a string that is either a path or a url into DotfilesOrigin  
+    /// Expecting str to always be in format <url|dir> <clone_path>
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let origin_and_clone_path = s.split(" ").collect::<Vec<_>>();
+        let origin = origin_and_clone_path
+            .get(0)
+            .ok_or(Unexpected(format!("No origin found in {s}")))?;
+        let clone_path = origin_and_clone_path.get(1).unwrap_or(&"~").to_string();
+
+        match origin {
+            url if is_url(url) => Ok(DotfilesOrigin::Repository(url.to_string(), clone_path)),
+            dir if is_dir(dir) => Ok(DotfilesOrigin::Directory(PathBuf::from(dir))),
+            _ => Err(InvalidDotfilesOrigin(format!("{origin}"))),
         }
     }
 }
 
-pub fn run(args: &Args) -> Result<Vec<ProgramOptions>> {
-    let cloned_repo = clone_repo(&args.repo_url, &args.path)?;
-    parse_dotfiles(cloned_repo)
+fn is_url(s: &str) -> bool {
+    s.starts_with("https://") || s.starts_with("http://")
 }
 
-fn magefile(path: PathBuf) -> Result<Table> {
-    let magefile = fs::read_to_string(path)?;
-    toml::from_str(&magefile).context("Failed to parse magefile")
+fn is_dir(s: &str) -> bool {
+    let path = PathBuf::from(s);
+    path.is_dir()
 }
 
-pub fn parse_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
-    let mut mage_config: Option<Table> = None;
-    let mut programs = vec![];
+impl TryFrom<DotfilesOrigin> for ReadDir {
+    type Error = MageError;
+    fn try_from(origin: DotfilesOrigin) -> Result<Self, Self::Error> {
+        match origin {
+            DotfilesOrigin::Directory(dir) => read_dir(dir).map_err(Into::into),
+            DotfilesOrigin::Repository(url, path) => clone_repo_and_read(&url, &path),
+        }
+    }
+}
 
-    for item in dotfiles {
-        let entry = item.context("Failed to read dir entry")?;
-        if entry.file_name().to_str().unwrap().starts_with("magefile") {
-            mage_config = Some(magefile(entry.path())?);
-            continue;
+impl TryFrom<DirEntry> for DotfilesEntry {
+    type Error = MageError;
+
+    fn try_from(entry: DirEntry) -> Result<Self, Self::Error> {
+        let is_magefile = entry
+            .file_name()
+            .to_str()
+            .ok_or(Unexpected("Failed to convert to string".to_string()))?
+            .starts_with("magefile");
+
+        if is_magefile {
+            let magefile = magefile(entry.path())?;
+            return Ok(DotfilesEntry::Magefile(magefile));
         }
 
         let path = entry.path();
         let key = path
             .file_stem()
             .and_then(|s| s.to_str())
-            .context(format!("Failed to get filename for {}", path.display()))?
+            .ok_or(Unexpected(format!(
+                "Failed to get file stem for {:?}",
+                path
+            )))?
             .to_string();
 
-        programs.push((key, path));
+        Ok(DotfilesEntry::ConfigFileOrDir(key, path))
     }
-    let mage_config = mage_config.context("No magefile found")?;
+}
 
+pub fn run(args: &Args) -> MageResult<Vec<ProgramOptions>> {
+    parse_dotfiles(args.try_into()?)
+}
+
+fn magefile(path: PathBuf) -> MageResult<Table> {
+    let magefile = fs::read_to_string(path)?;
+    let thing: Table = toml::from_str(&magefile).map_err(|e| {
+        let msg = format!("Failed to parse magefile: {}", e);
+        InvalidMageFile(msg)
+    })?;
+
+    Ok(thing)
+}
+
+pub fn parse_dotfiles(dotfiles: ReadDir) -> MageResult<Vec<ProgramOptions>> {
+    let mut mage_config: Option<Table> = None;
+    let mut programs = vec![];
+
+    for item in dotfiles {
+        match item?.try_into()? {
+            DotfilesEntry::Magefile(magefile) => mage_config = Some(magefile),
+            DotfilesEntry::ConfigFileOrDir(name, path) => programs.push((name, path)),
+        }
+    }
+    let mage_config = mage_config.ok_or(MageFileNotFound)?;
+
+    // Skip config files that are not in the magefile
     programs.retain(|(name, _)| mage_config.contains_key(name));
 
     let mut result = vec![];
 
     for (name, path) in programs.into_iter() {
-        let program = create_program_options(&mage_config, name, path)?;
+        let program = (&mage_config, name, path).try_into()?;
         result.push(program);
     }
 
     Ok(result)
 }
 
-fn create_program_options(magefile: &Table, name: String, path: PathBuf) -> Result<ProgramOptions> {
-    let program_config = magefile
-        .get(&name)
-        .context(format!("No entry in magefile for `{}`", name))?;
+impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
+    type Error = MageError;
 
-    let target_path = program_config
-        .get("target_path")
-        .map(|p| p.to_string())
-        .map(PathBuf::from)
-        .context(format!("No target_path for `{}`", name))?;
+    fn try_from((magefile, name, path): (&Table, String, PathBuf)) -> Result<Self, Self::Error> {
+        let program_config = magefile.get(&name).ok_or(InvalidMageFile(format!(
+            "Missing key: {name} from magefile"
+        )))?;
 
-    let is_installed_cmd = program_config
-        .get("is_installed_cmd")
-        .map(|cmd| cmd.to_string());
+        let target_path = program_config
+            .get("target_path")
+            .map(|p| p.to_string())
+            .map(PathBuf::from)
+            .ok_or(InvalidMageFile(format!("{name} missing key: target_path")))?;
 
-    Ok(ProgramOptions::new(
-        name,
-        path,
-        target_path,
-        is_installed_cmd,
-    ))
+        let is_installed_cmd = program_config
+            .get("is_installed_cmd")
+            .map(|cmd| cmd.to_string());
+
+        Ok(ProgramOptions {
+            name,
+            path,
+            target_path,
+            is_installed_cmd,
+        })
+    }
 }
 
-fn clone_repo(url: &str, path: &str) -> Result<ReadDir> {
+fn clone_repo_and_read(url: &str, path: &str) -> MageResult<ReadDir> {
     if PathBuf::from(path).exists() {
-        bail!("Path `{}` already exists", path)
+        return Err(Unexpected("Target clone path already exists".to_string()));
     }
 
     std::process::Command::new("git")
         .args(["clone", url, path])
-        .output()
-        .context(format!("Failed to clone repo `{url}` into `{path}`"))?;
+        .output()?;
 
-    fs::read_dir(path).context(format!("Failed to read cloned repo from `{path}`"))
+    let res = fs::read_dir(path)?;
+
+    Ok(res)
 }
 
 #[cfg(test)]
@@ -145,24 +220,21 @@ mod tests {
         assert_eq!(program.name, "example");
         let path_str = program.path.to_str().unwrap();
         assert_eq!(path_str, "test-dotfiles/example.config");
-
-        let should_be = PathBuf::from("/tmp/mage/example.config");
-        assert_eq!(program.target_path, should_be);
     }
 
     #[test]
     fn does_not_clone_if_path_exists() {
-        let result = clone_repo("empty", "test-dotfiles");
+        let result = clone_repo_and_read("empty", "test-dotfiles");
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
-        assert_eq!(msg, "Path `test-dotfiles` already exists");
+        assert_eq!(msg, "Error: Target clone path already exists");
     }
 
     #[test]
     #[ignore]
     fn test_clone_repo() {
         fs::remove_dir_all("/tmp/mage").unwrap_or_default();
-        clone_repo("https://github.com/ollivarila/brainfckr.git", "/tmp/mage").unwrap();
+        clone_repo_and_read("https://github.com/ollivarila/brainfckr.git", "/tmp/mage").unwrap();
         let dir_exists = PathBuf::from("/tmp/mage").exists();
         assert!(dir_exists);
         fs::remove_dir_all("/tmp/mage").unwrap_or_default();

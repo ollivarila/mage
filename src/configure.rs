@@ -1,11 +1,11 @@
-use crate::setup::ProgramOptions;
-use anyhow::{Context, Result};
+use crate::MageResult;
+use crate::{error::MageError, setup::ProgramOptions};
 use indicatif::{MultiProgress, ProgressBar};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{fs, os::unix::fs::symlink, path::PathBuf};
 
 pub trait Configure<T> {
-    fn configure(&self, bar: &impl Bar) -> Result<T>;
+    fn configure(&self, bar: &impl Bar) -> MageResult<T>;
 }
 
 pub trait Bar {
@@ -23,41 +23,46 @@ impl Bar for ProgressBar {
     }
 }
 
-impl Configure<bool> for ProgramOptions {
-    fn configure(&self, bar: &impl Bar) -> Result<bool> {
+impl Configure<ConfigureDetails> for ProgramOptions {
+    fn configure(&self, bar: &impl Bar) -> MageResult<ConfigureDetails> {
         bar.set_message(format!("Configuring {}", self.name));
+        let name = self.name.clone();
+
+        // Check if the config file already exists
         if self.target_path.exists() {
             bar.finish_with_message(format!("{} already configured ✔", self.name));
-            return Ok(true);
+            return Ok(ConfigureDetails::Installed(name));
         }
 
-        // ~/.config/file
-        // ~/file
-        let parent = self
-            .target_path
-            .parent()
-            .context("Could not get parent dir")?;
-        if !parent.exists() {
-            fs::create_dir_all(parent)?
-        }
+        // Check if the path to the config file exists
+        ensure_path_ok(&self.target_path)?;
 
-        symlink(self.path.clone(), self.target_path.clone()).context(format!(
-            "Failed to create symlink from {} to {}",
-            self.path.display(),
-            self.target_path.display()
-        ))?;
+        // Create symlink from dotfiles to target path
+        symlink(&self.path, &self.target_path)?;
 
-        let installed = match &self.is_installed_cmd {
-            Some(cmd) => check_installed(cmd),
-            None => true, // Assume it is already installed
+        let details = match &self.is_installed_cmd {
+            Some(cmd) if is_installed(cmd) => ConfigureDetails::Installed(name),
+            Some(_) => ConfigureDetails::NotInstalled(name),
+            None => ConfigureDetails::Installed(name), // Assume it is already installed
         };
 
         bar.finish_with_message(format!("{} ✔", self.name));
-        Ok(installed)
+        Ok(details)
     }
 }
 
-fn check_installed(cmd: &str) -> bool {
+fn ensure_path_ok(full_path: &PathBuf) -> MageResult<()> {
+    let parent = full_path
+        .parent()
+        .ok_or(MageError::InvalidPath(format!("{:?}", full_path)))?;
+    if !parent.exists() {
+        fs::create_dir_all(parent)?;
+    }
+
+    Ok(())
+}
+
+fn is_installed(cmd: &str) -> bool {
     std::process::Command::new("sh")
         .arg("-c")
         .arg(cmd)
@@ -66,38 +71,34 @@ fn check_installed(cmd: &str) -> bool {
         .unwrap_or_default()
 }
 
-impl Configure<Vec<String>> for Vec<ProgramOptions> {
-    fn configure(&self, _: &impl Bar) -> Result<Vec<String>> {
-        let mp = MultiProgress::new();
-        let not_installed = self
-            .par_iter()
-            .filter_map(|program| {
-                let bar = ProgressBar::new_spinner();
-                let bar = mp.add(bar);
-                match program.configure(&bar) {
-                    Ok(installed) => {
-                        if !installed {
-                            Some(program.name.clone())
-                        } else {
-                            None
-                        }
-                    }
-                    Err(e) => {
-                        eprintln!("Failed to configure {}: {}", program.name, e);
-                        None
-                    }
-                }
-            })
-            .collect();
-
-        Ok(not_installed)
-    }
+#[derive(Debug, PartialEq)]
+pub enum ConfigureDetails {
+    Installed(String),
+    NotInstalled(String),
+    SomethingWrong(String),
 }
 
-pub fn configure_dotfiles(programs: Vec<ProgramOptions>) -> Result<Vec<String>> {
-    let bar = ProgressBar::new_spinner();
+pub fn configure<T>(programs: Vec<T>) -> Vec<ConfigureDetails>
+where
+    T: Into<ProgramOptions>,
+{
+    let programs = programs
+        .into_iter()
+        .map(|t| t.into())
+        .collect::<Vec<ProgramOptions>>();
 
-    programs.configure(&bar)
+    let mp = MultiProgress::new();
+    programs
+        .into_par_iter()
+        .map(|program| {
+            let bar = ProgressBar::new_spinner();
+            let bar = mp.add(bar);
+            match program.configure(&bar) {
+                Ok(details) => details,
+                Err(e) => ConfigureDetails::SomethingWrong(e.to_string()),
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -129,8 +130,12 @@ mod tests {
 
         fs::remove_file(&target_path).unwrap_or_default();
 
-        let opts =
-            ProgramOptions::new("test".to_string(), dotfiles_path, target_path.clone(), None);
+        let opts = ProgramOptions {
+            name: "test".to_string(),
+            path: dotfiles_path,
+            target_path: target_path.clone(),
+            is_installed_cmd: None,
+        };
         TestContext { target_path, opts }
     }
 
@@ -141,7 +146,7 @@ mod tests {
         let installed = ctx.opts.configure(&bar).unwrap();
 
         assert!(&ctx.target_path.exists());
-        assert!(installed);
+        assert_eq!(installed, ConfigureDetails::Installed("test".to_string()));
     }
 
     #[test]
@@ -150,12 +155,15 @@ mod tests {
         ctx.opts.is_installed_cmd = Some("false".to_string());
         let bar = MockBar;
         let installed = ctx.opts.configure(&bar).unwrap();
-        assert!(!installed)
+        assert_eq!(
+            installed,
+            ConfigureDetails::NotInstalled("test".to_string())
+        );
     }
 
     #[test]
     fn test_check_installed() {
-        assert!(check_installed("true"));
-        assert!(!check_installed("false"));
+        assert!(is_installed("true"));
+        assert!(!is_installed("false"));
     }
 }
