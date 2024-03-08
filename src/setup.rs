@@ -11,7 +11,7 @@ use toml::Table;
 pub struct ProgramOptions {
     pub name: String,
     pub path: PathBuf,
-    pub target_path: String,
+    pub target_path: PathBuf,
     pub is_installed_cmd: Option<String>,
 }
 
@@ -19,7 +19,7 @@ impl ProgramOptions {
     pub fn new(
         name: String,
         path: PathBuf,
-        target_path: String,
+        target_path: PathBuf,
         is_installed_cmd: Option<String>,
     ) -> Self {
         ProgramOptions {
@@ -41,7 +41,7 @@ fn magefile(path: PathBuf) -> Result<Table> {
     toml::from_str(&magefile).context("Failed to parse magefile")
 }
 
-fn parse_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
+pub fn parse_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
     let mut mage_config: Option<Table> = None;
     let mut programs = vec![];
 
@@ -76,16 +76,19 @@ fn parse_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
 }
 
 fn create_program_options(magefile: &Table, name: String, path: PathBuf) -> Result<ProgramOptions> {
-    let program = magefile
+    let program_config = magefile
         .get(&name)
         .context(format!("No entry in magefile for `{}`", name))?;
 
-    let target_path = program
+    let target_path = program_config
         .get("target_path")
-        .context(format!("No target_path for `{}`", name))?
-        .to_string();
+        .map(|p| p.to_string())
+        .map(PathBuf::from)
+        .context(format!("No target_path for `{}`", name))?;
 
-    let is_installed_cmd = program.get("is_installed_cmd").map(|cmd| cmd.to_string());
+    let is_installed_cmd = program_config
+        .get("is_installed_cmd")
+        .map(|cmd| cmd.to_string());
 
     Ok(ProgramOptions::new(
         name,
@@ -125,7 +128,7 @@ mod tests {
         if fs::read_dir("/tmp/mage").is_ok() {
             fs::remove_dir_all("/tmp/mage").unwrap_or_default();
         }
-        fs::create_dir("/tmp/mage").unwrap();
+        // fs::create_dir("/tmp/mage").unwrap();
         Context
     }
 
@@ -133,14 +136,18 @@ mod tests {
     fn test_parse_dotfiles() {
         let _ctx = setup();
 
-        // let args = Args {
-        //     path: "/tmp/mage".to_string(),
-        //     repo_url: "".to_string(),
-        // };
         let dotfiles = fs::read_dir("test-dotfiles").unwrap();
         let programs = parse_dotfiles(dotfiles).unwrap();
 
         assert_eq!(programs.len(), 1);
+
+        let program = &programs[0];
+        assert_eq!(program.name, "example");
+        let path_str = program.path.to_str().unwrap();
+        assert_eq!(path_str, "test-dotfiles/example.config");
+
+        let should_be = PathBuf::from("/tmp/mage/example.config");
+        assert_eq!(program.target_path, should_be);
     }
 
     #[test]

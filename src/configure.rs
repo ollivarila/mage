@@ -2,7 +2,7 @@ use crate::setup::ProgramOptions;
 use anyhow::{Context, Result};
 use indicatif::{MultiProgress, ProgressBar};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::os::unix::fs::symlink;
+use std::{fs, os::unix::fs::symlink, path::PathBuf};
 
 pub trait Configure<T> {
     fn configure(&self, bar: &impl Bar) -> Result<T>;
@@ -26,17 +26,27 @@ impl Bar for ProgressBar {
 impl Configure<bool> for ProgramOptions {
     fn configure(&self, bar: &impl Bar) -> Result<bool> {
         bar.set_message(format!("Configuring {}", self.name));
-
-        if file_or_dir_exists(&self.target_path) {
+        if self.target_path.exists() {
             bar.finish_with_message(format!("{} already configured ✔", self.name));
             return Ok(true);
+        }
+
+        // ~/.config/file
+        // ~/file
+        let parent = self
+            .target_path
+            .parent()
+            .context("Could not get parent dir")?;
+        if !parent.exists() {
+            fs::create_dir_all(parent)?
         }
 
         symlink(self.path.clone(), self.target_path.clone()).context(format!(
             "Failed to create symlink from {} to {}",
             self.path.display(),
-            self.target_path
+            self.target_path.display()
         ))?;
+
         let installed = match &self.is_installed_cmd {
             Some(cmd) => check_installed(cmd),
             None => true, // Assume it is already installed
@@ -84,8 +94,10 @@ impl Configure<Vec<String>> for Vec<ProgramOptions> {
     }
 }
 
-fn file_or_dir_exists(path: &str) -> bool {
-    std::fs::metadata(path).is_ok()
+pub fn configure_dotfiles(programs: Vec<ProgramOptions>) -> Result<Vec<String>> {
+    let bar = ProgressBar::new_spinner();
+
+    programs.configure(&bar)
 }
 
 #[cfg(test)]
@@ -94,7 +106,7 @@ mod tests {
     use std::{fs, path::PathBuf};
 
     struct TestContext {
-        target_path: String,
+        target_path: PathBuf,
         opts: ProgramOptions,
     }
 
@@ -113,7 +125,7 @@ mod tests {
 
     fn setup() -> TestContext {
         let dotfiles_path = PathBuf::from("test-dotfiles").canonicalize().unwrap();
-        let target_path = "/tmp/example.config".to_string();
+        let target_path = PathBuf::from("/tmp/example.config");
 
         fs::remove_file(&target_path).unwrap_or_default();
 
@@ -123,18 +135,12 @@ mod tests {
     }
 
     #[test]
-    fn test_file_or_dir_exists() {
-        assert!(file_or_dir_exists("/etc/passwd"));
-        assert!(!file_or_dir_exists("/etc/does_not_exist"));
-    }
-
-    #[test]
     fn test_configure_program_with_file() {
         let ctx = setup();
         let bar = MockBar;
         let installed = ctx.opts.configure(&bar).unwrap();
 
-        assert!(file_or_dir_exists(&ctx.target_path));
+        assert!(&ctx.target_path.exists());
         assert!(installed);
     }
 

@@ -1,3 +1,5 @@
+use std::fs;
+
 use anyhow::Result;
 use clap::{command, Parser};
 use indicatif::ProgressBar;
@@ -6,21 +8,18 @@ use crate::configure::Configure;
 mod configure;
 mod setup;
 
-static DEV: bool = true;
+const DEV: bool = std::option_env!("DEV").is_some();
 
 fn main() -> Result<()> {
     let args = Args::parse();
     let bar = ProgressBar::new_spinner();
     if DEV {
-        let args = Args {
-            repo_url: "".to_string(),
-            path: "/tmp/mage".to_string(),
-        };
-        let programs = setup::run(&args)?;
+        let dotfiles = fs::read_dir("test-dotfiles").unwrap();
+        let programs = setup::parse_dotfiles(dotfiles)?;
         programs.configure(&bar)?;
     } else {
         let programs = setup::run(&args)?;
-        programs.configure(&bar)?;
+        configure::configure_dotfiles(programs)?;
     }
 
     Ok(())
