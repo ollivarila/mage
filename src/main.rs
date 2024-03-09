@@ -68,18 +68,10 @@ struct Args {
     #[arg(help = "Can either be url to a repository or a path to existing folder on the system")]
     origin: String,
     #[arg(
-        short,
+        short = 'p',
         long,
-        help = "Path where dotfiles are cloned into",
+        help = "Path where dotfiles are cloned into, ignored if origin is a path to an existing folder",
         default_value = "~/dotfiles"
     )]
-    path: String,
-}
-
-impl Args {
-    fn get_origin_str(&self) -> String {
-        let origin = &self.origin;
-        let path = &self.path;
-        format!("{origin} {path}")
-    }
+    dotfiles_path: String,
 }

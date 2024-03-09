@@ -104,7 +104,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::PathBuf, time::Duration};
 
     #[derive(Debug)]
     struct TestContext {
@@ -126,10 +126,17 @@ mod tests {
     }
 
     fn setup() -> TestContext {
-        let dotfiles_path = PathBuf::from("test-dotfiles").canonicalize().unwrap();
+        let dotfiles_path = PathBuf::from("examples/test-dotfiles")
+            .canonicalize()
+            .unwrap();
         let target_path = PathBuf::from("/tmp/example.config");
 
         fs::remove_file(&target_path).unwrap_or_default();
+
+        // Wait for file to be removed
+        while target_path.exists() {
+            std::thread::sleep(Duration::from_millis(100));
+        }
 
         let opts = ProgramOptions {
             name: "example".to_string(),
@@ -169,5 +176,20 @@ mod tests {
     fn test_check_installed() {
         assert!(is_installed("true"));
         assert!(!is_installed("false"));
+    }
+
+    #[test]
+    fn test_configure_many() {
+        let ctx = setup();
+        assert!(!ctx.target_path.exists());
+        let programs = vec![ctx.opts.clone()];
+        let configured = configure(programs);
+
+        let program = configured.get(0).unwrap();
+
+        assert_eq!(configured.len(), 1);
+        assert_eq!(*program, ConfigureDetails::Installed(ctx.opts.name.clone()));
+        assert!(ctx.target_path.exists());
+        assert!(ctx.target_path.is_symlink());
     }
 }

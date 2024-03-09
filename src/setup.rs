@@ -7,12 +7,10 @@ use crate::{
 use std::{
     fs::{self, read_dir, DirEntry, ReadDir},
     path::PathBuf,
-    str::FromStr,
 };
 use toml::Table;
 
-#[derive(Debug)]
-#[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub struct ProgramOptions {
     pub name: String,
     pub path: PathBuf,
@@ -20,11 +18,13 @@ pub struct ProgramOptions {
     pub is_installed_cmd: Option<String>,
 }
 
+#[derive(PartialEq, Debug)]
 pub enum DotfilesEntry {
     ConfigFileOrDir(String, PathBuf),
     Magefile(Table),
 }
 
+#[derive(PartialEq, Debug)]
 enum DotfilesOrigin {
     Directory(PathBuf),
     Repository(String, String),
@@ -34,27 +34,21 @@ impl TryFrom<&Args> for ReadDir {
     type Error = MageError;
 
     fn try_from(args: &Args) -> Result<Self, Self::Error> {
-        let origin: DotfilesOrigin = args.get_origin_str().parse()?;
+        let origin: DotfilesOrigin =
+            (args.origin.as_str(), args.dotfiles_path.as_str()).try_into()?;
         origin.try_into()
     }
 }
 
-impl FromStr for DotfilesOrigin {
-    type Err = MageError;
-    /// Parses a string that is either a path or a url into DotfilesOrigin  
-    /// Expecting str to always be in format <url|dir> <clone_path>
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let origin_and_clone_path = s.split(" ").collect::<Vec<_>>();
-        let origin = origin_and_clone_path
-            .get(0)
-            .ok_or(Unexpected(format!("No origin found in {s}")))?;
-        let clone_path = origin_and_clone_path
-            .get(1)
-            .unwrap_or(&"~/dotfiles")
-            .to_string();
+impl TryFrom<(&str, &str)> for DotfilesOrigin {
+    type Error = MageError;
 
+    fn try_from((origin, clone_path): (&str, &str)) -> Result<Self, Self::Error> {
         match origin {
-            url if is_url(url) => Ok(DotfilesOrigin::Repository(url.to_string(), clone_path)),
+            url if is_url(url) => Ok(DotfilesOrigin::Repository(
+                url.to_string(),
+                clone_path.to_string(),
+            )),
             dir if is_dir(dir) => Ok(DotfilesOrigin::Directory(PathBuf::from(dir))),
             _ => Err(InvalidDotfilesOrigin(format!("{origin}"))),
         }
@@ -215,27 +209,29 @@ mod tests {
 
     use super::*;
 
-    struct Context;
+    struct Context {
+        path: String,
+    }
 
     impl Drop for Context {
         fn drop(&mut self) {
-            fs::remove_dir_all("/tmp/mage").unwrap_or_default();
+            fs::remove_dir_all(self.path.clone()).unwrap_or_default();
         }
     }
 
     fn setup() -> Context {
-        if fs::read_dir("/tmp/mage").is_ok() {
-            fs::remove_dir_all("/tmp/mage").unwrap_or_default();
+        let path = "/tmp/mage".to_string();
+        if fs::read_dir(&path).is_ok() {
+            fs::remove_dir_all(&path).unwrap_or_default();
         }
-        // fs::create_dir("/tmp/mage").unwrap();
-        Context
+        Context { path }
     }
 
     #[test]
     fn test_parse_dotfiles() {
         let _ctx = setup();
 
-        let dotfiles = fs::read_dir("test-dotfiles").unwrap();
+        let dotfiles = fs::read_dir("examples/test-dotfiles").unwrap();
         let programs = parse_dotfiles(dotfiles).unwrap();
 
         assert_eq!(programs.len(), 1);
@@ -249,7 +245,7 @@ mod tests {
 
     #[test]
     fn does_not_clone_if_path_exists() {
-        let result = clone_repo_and_read("empty", "test-dotfiles");
+        let result = clone_repo_and_read("empty", "examples/test-dotfiles");
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert_eq!(msg, "Error: Target clone path already exists");
@@ -272,5 +268,79 @@ mod tests {
         let expected = PathBuf::from(format!("{home}/test"));
         let path = get_full_path(path);
         assert_eq!(path, expected);
+    }
+
+    #[test]
+    fn dotfiles_origin_from_str() {
+        let origin = ("/tmp", "asdf");
+        let df_origin: DotfilesOrigin = origin.try_into().unwrap();
+
+        assert_eq!(df_origin, DotfilesOrigin::Directory(PathBuf::from("/tmp")));
+
+        let origin = ("https://google.com", "bar");
+        let df_origin: DotfilesOrigin = origin.try_into().unwrap();
+        let should_be =
+            DotfilesOrigin::Repository("https://google.com".to_string(), "bar".to_string());
+        assert_eq!(df_origin, should_be);
+
+        let origin = ("asdf", "bar");
+        let df_origin: Result<DotfilesOrigin, _> = origin.try_into();
+        assert!(df_origin.is_err())
+    }
+
+    #[test]
+    fn dotfiles_origin_into_readdir() {
+        let origin = DotfilesOrigin::Directory(PathBuf::from("examples/test-dotfiles"));
+        let readdir: ReadDir = origin.try_into().unwrap();
+
+        let n = readdir.count();
+
+        // another
+        // example.config
+        // magefile.toml
+        assert_eq!(n, 3)
+    }
+
+    #[test]
+    fn invalid_magefile() {
+        let path = PathBuf::from("examples/test-dotfiles/example.config");
+        let magefile = magefile(path);
+        assert!(magefile.is_err());
+        match magefile.unwrap_err() {
+            InvalidMageFile(_) => {}
+            val => assert!(false, "Got: {}", val),
+        }
+    }
+
+    #[test]
+    fn setup_with_invalid_args() {
+        // Invalid origin
+        let args = Args {
+            origin: "asdfsd".to_string(),
+            dotfiles_path: "sadfas".to_string(),
+        };
+
+        let result = run(&args);
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            InvalidDotfilesOrigin(_) => {}
+            val => assert!(false, "Got: {}", val),
+        }
+    }
+
+    #[test]
+    fn setup_with_valid_args() {
+        let mut ctx = setup();
+        ctx.path = "/tmp/valid".to_string();
+        let args = Args {
+            origin: "examples/test-dotfiles".to_string(),
+            dotfiles_path: ctx.path.clone(),
+        };
+        let result = run(&args);
+
+        assert!(result.is_ok());
+        let programs = result.unwrap();
+        assert_eq!(programs.len(), 1);
     }
 }
