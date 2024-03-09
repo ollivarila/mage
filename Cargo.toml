@@ -11,6 +11,3 @@ indicatif = { version = "0.17.8", features = ["rayon"] }
 rayon = "1.9.0"
 thiserror = "1.0.57"
 toml = "0.8.10"
-
-[dev-dependencies]
-mockall = "0.12.1"
