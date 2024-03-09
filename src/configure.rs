@@ -30,7 +30,7 @@ impl Configure<ConfigureDetails> for ProgramOptions {
 
         // Check if the config file already exists
         if self.target_path.exists() {
-            bar.finish_with_message(format!("{} already configured ✔", self.name));
+            bar.finish_with_message(format!("{} already configured ✔️", self.name));
             return Ok(ConfigureDetails::Installed(name));
         }
 
@@ -46,7 +46,7 @@ impl Configure<ConfigureDetails> for ProgramOptions {
             None => ConfigureDetails::Installed(name), // Assume it is already installed
         };
 
-        bar.finish_with_message(format!("{} ✔", self.name));
+        bar.finish_with_message(format!("{} configured ✔️", self.name));
         Ok(details)
     }
 }
