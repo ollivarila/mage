@@ -3,6 +3,7 @@ use crate::{error::MageError, setup::ProgramOptions};
 use indicatif::{MultiProgress, ProgressBar};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{fs, os::unix::fs::symlink, path::PathBuf};
+use tracing::{debug, debug_span};
 
 pub trait Configure<T> {
     fn configure(&self, bar: &impl Bar) -> MageResult<T>;
@@ -30,6 +31,7 @@ impl Configure<ConfigureDetails> for ProgramOptions {
 
         // Check if the config file already exists
         if self.target_path.exists() {
+            debug!(target = ?self.target_path, "exists");
             bar.finish_with_message(format!("{} already configured ✔️", self.name));
             return Ok(ConfigureDetails::Installed(name));
         }
@@ -39,6 +41,8 @@ impl Configure<ConfigureDetails> for ProgramOptions {
 
         // Create symlink from dotfiles to target path
         symlink(&self.path, &self.target_path)?;
+
+        debug!(origin = ?self.path, target = ?self.target_path, "symlink");
 
         let details = match &self.is_installed_cmd {
             Some(cmd) if is_installed(cmd) => ConfigureDetails::Installed(name),
@@ -56,6 +60,7 @@ fn ensure_path_ok(full_path: &PathBuf) -> MageResult<()> {
         .parent()
         .ok_or(MageError::InvalidPath(format!("{:?}", full_path)))?;
     if !parent.exists() {
+        debug!(path = ?parent, "created");
         fs::create_dir_all(parent)?;
     }
 
@@ -82,6 +87,8 @@ pub fn configure<T>(programs: Vec<T>) -> Vec<ConfigureDetails>
 where
     T: Into<ProgramOptions>,
 {
+    let span = debug_span!("configure");
+    let _guard = span.enter();
     let programs = programs
         .into_iter()
         .map(|t| t.into())
@@ -91,12 +98,17 @@ where
     programs
         .into_par_iter()
         .map(|program| {
+            let name = &program.name;
+            let span = debug_span!("program", name);
+            let _guard2 = span.enter();
             let bar = ProgressBar::new_spinner();
             let bar = mp.add(bar);
-            match program.configure(&bar) {
+            let result = match program.configure(&bar) {
                 Ok(details) => details,
                 Err(e) => ConfigureDetails::SomethingWrong(e.to_string()),
-            }
+            };
+            debug!(result = ?result, "configured");
+            result
         })
         .collect()
 }

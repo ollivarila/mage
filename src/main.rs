@@ -1,7 +1,8 @@
 use clap::{command, Parser};
 use configure::{configure, ConfigureDetails};
 use error::MageError;
-use std::{fs, process::exit};
+use std::{fmt::Debug, fs, process::exit};
+use tracing::Level;
 mod configure;
 mod error;
 mod setup;
@@ -9,6 +10,7 @@ mod setup;
 pub type MageResult<T> = Result<T, MageError>;
 
 const DEV: bool = std::option_env!("MAGE_DEV").is_some();
+const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
 
 fn main() {
     let result = if DEV { run_dev_mode() } else { run_prod_mode() };
@@ -21,8 +23,15 @@ fn main() {
 
 fn run_dev_mode() -> MageResult<()> {
     let _args = Args::parse();
-    let dotfiles = fs::read_dir("test-dotfiles").unwrap();
-    let programs = setup::parse_dotfiles(dotfiles)?;
+
+    if DEBUG {
+        tracing_subscriber::fmt()
+            .with_max_level(Level::DEBUG)
+            .init();
+    }
+
+    let dotfiles = fs::read_dir("examples/test-dotfiles").unwrap();
+    let programs = setup::read_dotfiles(dotfiles)?;
     configure(programs);
 
     Ok(())
@@ -30,6 +39,13 @@ fn run_dev_mode() -> MageResult<()> {
 
 fn run_prod_mode() -> MageResult<()> {
     let args = Args::parse();
+
+    if args.debug {
+        tracing_subscriber::fmt()
+            .with_max_level(Level::DEBUG)
+            .init();
+    }
+
     let programs = setup::run(&args)?;
     let result = configure(programs);
     display_result(result);
@@ -74,4 +90,7 @@ struct Args {
         default_value = "~/dotfiles"
     )]
     dotfiles_path: String,
+
+    #[arg(short, long, default_value = "false", help = "Enable debug logging")]
+    debug: bool,
 }

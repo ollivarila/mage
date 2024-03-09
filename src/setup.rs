@@ -9,6 +9,7 @@ use std::{
     path::PathBuf,
 };
 use toml::Table;
+use tracing::{debug, debug_span};
 
 #[derive(Debug, Clone)]
 pub struct ProgramOptions {
@@ -44,14 +45,21 @@ impl TryFrom<(&str, &str)> for DotfilesOrigin {
     type Error = MageError;
 
     fn try_from((origin, clone_path): (&str, &str)) -> Result<Self, Self::Error> {
-        match origin {
+        let span = debug_span!("DotfilesOrigin", origin, target_clone_path = clone_path);
+        let _guard = span.enter();
+
+        let result = match origin {
             url if is_url(url) => Ok(DotfilesOrigin::Repository(
                 url.to_string(),
                 clone_path.to_string(),
             )),
             dir if is_dir(dir) => Ok(DotfilesOrigin::Directory(PathBuf::from(dir))),
             _ => Err(InvalidDotfilesOrigin(format!("{origin}"))),
-        }
+        };
+
+        debug!(origin = ?result);
+
+        result
     }
 }
 
@@ -103,6 +111,8 @@ impl TryFrom<DirEntry> for DotfilesEntry {
             )))?
             .to_string();
 
+        debug!(name = ?key, path = ?path, "parsed");
+
         Ok(DotfilesEntry::ConfigFileOrDir(key, path))
     }
 }
@@ -124,7 +134,7 @@ fn get_full_path(path: PathBuf) -> PathBuf {
 }
 
 pub fn run(args: &Args) -> MageResult<Vec<ProgramOptions>> {
-    parse_dotfiles(args.try_into()?)
+    debug_span!("setup").in_scope(|| read_dotfiles(args.try_into()?))
 }
 
 fn magefile(path: PathBuf) -> MageResult<Table> {
@@ -137,12 +147,18 @@ fn magefile(path: PathBuf) -> MageResult<Table> {
     Ok(thing)
 }
 
-pub fn parse_dotfiles(dotfiles: ReadDir) -> MageResult<Vec<ProgramOptions>> {
+pub fn read_dotfiles(dotfiles: ReadDir) -> MageResult<Vec<ProgramOptions>> {
+    let span = debug_span!("read_dotfiles");
+    let _guard = span.enter();
+
     let mut mage_config: Option<Table> = None;
     let mut programs = vec![];
 
     for item in dotfiles {
-        match item?.try_into()? {
+        let item = item?;
+        let filename = item.file_name();
+        debug!(filename = ?filename, "entry");
+        match item.try_into()? {
             DotfilesEntry::Magefile(magefile) => mage_config = Some(magefile),
             DotfilesEntry::ConfigFileOrDir(name, path) => programs.push((name, path)),
         }
@@ -150,7 +166,13 @@ pub fn parse_dotfiles(dotfiles: ReadDir) -> MageResult<Vec<ProgramOptions>> {
     let mage_config = mage_config.ok_or(MageFileNotFound)?;
 
     // Skip config files that are not in the magefile
-    programs.retain(|(name, _)| mage_config.contains_key(name));
+    programs.retain(|(name, _)| {
+        let retain = mage_config.contains_key(name);
+        if !retain {
+            debug!(name, "skipping");
+        }
+        retain
+    });
 
     let mut result = vec![];
 
@@ -159,6 +181,7 @@ pub fn parse_dotfiles(dotfiles: ReadDir) -> MageResult<Vec<ProgramOptions>> {
         result.push(program);
     }
 
+    debug!("done");
     Ok(result)
 }
 
@@ -199,8 +222,10 @@ fn clone_repo_and_read(url: &str, path: &str) -> MageResult<ReadDir> {
         .args(["clone", url, path])
         .output()?;
 
+    debug!(path, "cloned repo");
     let res = fs::read_dir(path)?;
 
+    debug!("read cloned repo");
     Ok(res)
 }
 
@@ -232,7 +257,7 @@ mod tests {
         let _ctx = setup();
 
         let dotfiles = fs::read_dir("examples/test-dotfiles").unwrap();
-        let programs = parse_dotfiles(dotfiles).unwrap();
+        let programs = read_dotfiles(dotfiles).unwrap();
 
         assert_eq!(programs.len(), 1);
 
@@ -318,6 +343,7 @@ mod tests {
         let args = Args {
             origin: "asdfsd".to_string(),
             dotfiles_path: "sadfas".to_string(),
+            debug: false,
         };
 
         let result = run(&args);
@@ -336,6 +362,7 @@ mod tests {
         let args = Args {
             origin: "examples/test-dotfiles".to_string(),
             dotfiles_path: ctx.path.clone(),
+            debug: false,
         };
         let result = run(&args);
 
