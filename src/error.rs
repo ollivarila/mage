@@ -11,13 +11,13 @@ pub enum MageError {
     #[error("Magefile not found")]
     MageFileNotFound,
 
-    #[error("Invalid magefile: {0}")]
+    #[error("Invalid magefile:\n{0}")]
     InvalidMageFile(String),
 
-    #[error("Invalid path or url {0}")]
+    #[error("Invalid path or url: {0}")]
     InvalidDotfilesOrigin(String),
 
-    #[error("Invalid path {0}")]
+    #[error("Invalid path: {0}")]
     InvalidPath(String),
 }
 

@@ -48,7 +48,10 @@ impl FromStr for DotfilesOrigin {
         let origin = origin_and_clone_path
             .get(0)
             .ok_or(Unexpected(format!("No origin found in {s}")))?;
-        let clone_path = origin_and_clone_path.get(1).unwrap_or(&"~").to_string();
+        let clone_path = origin_and_clone_path
+            .get(1)
+            .unwrap_or(&"~/dotfiles")
+            .to_string();
 
         match origin {
             url if is_url(url) => Ok(DotfilesOrigin::Repository(url.to_string(), clone_path)),
@@ -92,7 +95,11 @@ impl TryFrom<DirEntry> for DotfilesEntry {
             return Ok(DotfilesEntry::Magefile(magefile));
         }
 
-        let path = entry.path();
+        let path = entry
+            .path()
+            .canonicalize()
+            .or(Err(Unexpected("Failed to canonicalize path".to_string())))?;
+
         let key = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -106,6 +113,22 @@ impl TryFrom<DirEntry> for DotfilesEntry {
     }
 }
 
+fn get_full_path(path: PathBuf) -> PathBuf {
+    let home = std::env::var("HOME").unwrap();
+
+    if path.starts_with("~") {
+        let mut full_path = PathBuf::from(home);
+        for item in path.iter() {
+            if item.to_str().unwrap() != "~" {
+                full_path.push(item)
+            }
+        }
+        return full_path;
+    }
+
+    path
+}
+
 pub fn run(args: &Args) -> MageResult<Vec<ProgramOptions>> {
     parse_dotfiles(args.try_into()?)
 }
@@ -113,7 +136,7 @@ pub fn run(args: &Args) -> MageResult<Vec<ProgramOptions>> {
 fn magefile(path: PathBuf) -> MageResult<Table> {
     let magefile = fs::read_to_string(path)?;
     let thing: Table = toml::from_str(&magefile).map_err(|e| {
-        let msg = format!("Failed to parse magefile: {}", e);
+        let msg = format!("Failed to parse magefile:\n{}", e);
         InvalidMageFile(msg)
     })?;
 
@@ -155,8 +178,9 @@ impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
 
         let target_path = program_config
             .get("target_path")
-            .map(|p| p.to_string())
+            .map(|p| p.as_str().unwrap())
             .map(PathBuf::from)
+            .map(get_full_path)
             .ok_or(InvalidMageFile(format!("{name} missing key: target_path")))?;
 
         let is_installed_cmd = program_config
@@ -218,8 +242,9 @@ mod tests {
 
         let program = &programs[0];
         assert_eq!(program.name, "example");
-        let path_str = program.path.to_str().unwrap();
-        assert_eq!(path_str, "test-dotfiles/example.config");
+        let target_path = program.target_path.to_str().unwrap();
+
+        assert_eq!(target_path, "/tmp/example.config")
     }
 
     #[test]
@@ -238,5 +263,14 @@ mod tests {
         let dir_exists = PathBuf::from("/tmp/mage").exists();
         assert!(dir_exists);
         fs::remove_dir_all("/tmp/mage").unwrap_or_default();
+    }
+
+    #[test]
+    fn test_get_full_path() {
+        let path = PathBuf::from("~/test");
+        let home = std::env::var("HOME").unwrap();
+        let expected = PathBuf::from(format!("{home}/test"));
+        let path = get_full_path(path);
+        assert_eq!(path, expected);
     }
 }

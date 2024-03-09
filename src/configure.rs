@@ -106,6 +106,7 @@ mod tests {
     use super::*;
     use std::{fs, path::PathBuf};
 
+    #[derive(Debug)]
     struct TestContext {
         target_path: PathBuf,
         opts: ProgramOptions,
@@ -131,7 +132,7 @@ mod tests {
         fs::remove_file(&target_path).unwrap_or_default();
 
         let opts = ProgramOptions {
-            name: "test".to_string(),
+            name: "example".to_string(),
             path: dotfiles_path,
             target_path: target_path.clone(),
             is_installed_cmd: None,
@@ -146,7 +147,10 @@ mod tests {
         let installed = ctx.opts.configure(&bar).unwrap();
 
         assert!(&ctx.target_path.exists());
-        assert_eq!(installed, ConfigureDetails::Installed("test".to_string()));
+        assert_eq!(
+            installed,
+            ConfigureDetails::Installed("example".to_string())
+        );
     }
 
     #[test]
@@ -157,7 +161,7 @@ mod tests {
         let installed = ctx.opts.configure(&bar).unwrap();
         assert_eq!(
             installed,
-            ConfigureDetails::NotInstalled("test".to_string())
+            ConfigureDetails::NotInstalled("example".to_string())
         );
     }
 
