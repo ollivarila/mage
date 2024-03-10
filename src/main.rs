@@ -5,7 +5,6 @@ use tracing::Level;
 mod commands;
 mod dotfiles;
 
-// const DEV: bool = std::option_env!("MAGE_DEV").is_some();
 const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
 
 fn main() -> anyhow::Result<()> {
@@ -32,8 +31,17 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Command {
+    #[command(about = "Creates an example magefile in the working directory")]
     Init,
-    Clean,
+    Clean {
+        #[arg(
+            short = 'p',
+            long,
+            help = "Path where dotfiles are located",
+            default_value = "~/dotfiles"
+        )]
+        dotfiles_path: String,
+    },
     Setup {
         #[arg(
             help = "Can either be url to a repository or a path to existing folder on the system"

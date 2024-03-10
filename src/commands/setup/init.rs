@@ -1,11 +1,11 @@
-use crate::dotfiles::{DotfilesEntry, DotfilesOrigin, ProgramOptions};
+use crate::dotfiles::{read_dotfiles, DotfilesOrigin, ProgramOptions};
 use anyhow::{Context, Result};
 use std::{fs::ReadDir, path::PathBuf};
 use toml::Table;
-use tracing::{debug, debug_span};
+use tracing::debug_span;
 
 pub fn run(origin: &str, dotfiles_path: &str) -> Result<Vec<ProgramOptions>> {
-    debug_span!("setup").in_scope(|| {
+    debug_span!("init").in_scope(|| {
         let read_dir = init_origin(origin, dotfiles_path)?;
         read_dotfiles(read_dir)
     })
@@ -14,44 +14,6 @@ pub fn run(origin: &str, dotfiles_path: &str) -> Result<Vec<ProgramOptions>> {
 fn init_origin(origin: &str, dotfiles_path: &str) -> Result<ReadDir> {
     let origin: DotfilesOrigin = (origin, dotfiles_path).try_into()?;
     origin.try_into()
-}
-
-fn read_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
-    let span = debug_span!("read_dotfiles");
-    let _guard = span.enter();
-
-    let mut mage_config: Option<Table> = None;
-    let mut programs = vec![];
-
-    for item in dotfiles {
-        let item = item?;
-        let filename = item.file_name();
-        debug!(filename = ?filename, "entry");
-        match item.try_into()? {
-            DotfilesEntry::Magefile(magefile) => mage_config = Some(magefile),
-            DotfilesEntry::ConfigFileOrDir(name, path) => programs.push((name, path)),
-        }
-    }
-    let mage_config = mage_config.context("magefile not found")?;
-
-    // Skip config files that are not in the magefile
-    programs.retain(|(name, _)| {
-        let retain = mage_config.contains_key(name);
-        if !retain {
-            debug!(name, "skipping");
-        }
-        retain
-    });
-
-    let mut result = vec![];
-
-    for (name, path) in programs.into_iter() {
-        let program = (&mage_config, name, path).try_into()?;
-        result.push(program);
-    }
-
-    debug!("done");
-    Ok(result)
 }
 
 fn get_full_path(path: PathBuf) -> PathBuf {
@@ -121,22 +83,6 @@ mod tests {
             fs::remove_dir_all(&path).unwrap_or_default();
         }
         Context { path }
-    }
-
-    #[test]
-    fn test_read_dotfiles() {
-        let _ctx = setup();
-
-        let dotfiles = fs::read_dir("examples/test-dotfiles").unwrap();
-        let programs = read_dotfiles(dotfiles).unwrap();
-
-        assert_eq!(programs.len(), 1);
-
-        let program = &programs[0];
-        assert_eq!(program.name, "example");
-        let target_path = program.target_path.to_str().unwrap();
-
-        assert_eq!(target_path, "/tmp/example.config")
     }
 
     #[test]

@@ -2,14 +2,18 @@ mod configure;
 mod init;
 
 use configure::configure;
+use tracing::debug_span;
 
 use self::configure::ConfigureDetails;
 
 pub fn execute(origin: &str, dotfiles_path: &str) -> anyhow::Result<()> {
-    let programs = init::run(origin, dotfiles_path)?;
-    let result = configure(programs);
-    display_result(result);
-    Ok(())
+    debug_span!("setup").in_scope(|| {
+        // TODO: implement filename from magefile
+        let programs = init::run(origin, dotfiles_path)?;
+        let result = configure(programs);
+        display_result(result);
+        Ok(())
+    })
 }
 
 fn display_result(result: Vec<ConfigureDetails>) {

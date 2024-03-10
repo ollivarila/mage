@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use std::{
     fs::{self, read_dir, DirEntry, ReadDir},
     path::PathBuf,
@@ -127,6 +127,44 @@ fn is_dir(s: &str) -> bool {
     path.is_dir()
 }
 
+pub fn read_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
+    let span = debug_span!("read_dotfiles");
+    let _guard = span.enter();
+
+    let mut mage_config: Option<Table> = None;
+    let mut programs = vec![];
+
+    for item in dotfiles {
+        let item = item?;
+        let filename = item.file_name();
+        debug!(filename = ?filename, "entry");
+        match item.try_into()? {
+            DotfilesEntry::Magefile(magefile) => mage_config = Some(magefile),
+            DotfilesEntry::ConfigFileOrDir(name, path) => programs.push((name, path)),
+        }
+    }
+    let mage_config = mage_config.context("magefile not found")?;
+
+    // Skip config files that are not in the magefile
+    programs.retain(|(name, _)| {
+        let retain = mage_config.contains_key(name);
+        if !retain {
+            debug!(name, "skipping");
+        }
+        retain
+    });
+
+    let mut result = vec![];
+
+    for (name, path) in programs.into_iter() {
+        let program = (&mage_config, name, path).try_into()?;
+        result.push(program);
+    }
+
+    debug!("done");
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,5 +222,38 @@ mod tests {
         // example.config
         // magefile.toml
         assert_eq!(n, 3)
+    }
+    struct Context {
+        path: String,
+    }
+
+    impl Drop for Context {
+        fn drop(&mut self) {
+            fs::remove_dir_all(self.path.clone()).unwrap_or_default();
+        }
+    }
+
+    fn setup() -> Context {
+        let path = "/tmp/mage".to_string();
+        if fs::read_dir(&path).is_ok() {
+            fs::remove_dir_all(&path).unwrap_or_default();
+        }
+        Context { path }
+    }
+
+    #[test]
+    fn test_read_dotfiles() {
+        let _ctx = setup();
+
+        let dotfiles = fs::read_dir("examples/test-dotfiles").unwrap();
+        let programs = read_dotfiles(dotfiles).unwrap();
+
+        assert_eq!(programs.len(), 1);
+
+        let program = &programs[0];
+        assert_eq!(program.name, "example");
+        let target_path = program.target_path.to_str().unwrap();
+
+        assert_eq!(target_path, "/tmp/example.config")
     }
 }

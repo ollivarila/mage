@@ -1,3 +1,5 @@
+mod clean;
+mod init;
 mod setup;
 
 pub trait Exec {
@@ -11,7 +13,9 @@ impl Exec for crate::Command {
                 origin,
                 dotfiles_path,
             } => setup::execute(origin, dotfiles_path),
-            cmd => Err(anyhow::anyhow!("Unimplemented command: {:?}", cmd)),
+            Self::Clean { dotfiles_path } => clean::execute(dotfiles_path),
+            Self::Init => init::execute(),
+            // cmd => Err(anyhow::anyhow!("Unimplemented command: {:?}", cmd)),
         }
     }
 }
