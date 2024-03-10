@@ -1,12 +1,12 @@
-use crate::MageResult;
-use crate::{error::MageError, setup::ProgramOptions};
+use crate::dotfiles::ProgramOptions;
+use anyhow::{Context, Result};
 use indicatif::{MultiProgress, ProgressBar};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{fs, os::unix::fs::symlink, path::PathBuf};
 use tracing::{debug, debug_span};
 
 pub trait Configure<T> {
-    fn configure(&self, bar: &impl Bar) -> MageResult<T>;
+    fn configure(&self, bar: &impl Bar) -> Result<T>;
 }
 
 pub trait Bar {
@@ -25,7 +25,7 @@ impl Bar for ProgressBar {
 }
 
 impl Configure<ConfigureDetails> for ProgramOptions {
-    fn configure(&self, bar: &impl Bar) -> MageResult<ConfigureDetails> {
+    fn configure(&self, bar: &impl Bar) -> Result<ConfigureDetails> {
         bar.set_message(format!("Configuring {}", self.name));
         let name = self.name.clone();
 
@@ -55,10 +55,8 @@ impl Configure<ConfigureDetails> for ProgramOptions {
     }
 }
 
-fn ensure_path_ok(full_path: &PathBuf) -> MageResult<()> {
-    let parent = full_path
-        .parent()
-        .ok_or(MageError::InvalidPath(format!("{:?}", full_path)))?;
+fn ensure_path_ok(full_path: &PathBuf) -> Result<()> {
+    let parent = full_path.parent().context("get parent path")?;
     if !parent.exists() {
         debug!(path = ?parent, "created");
         fs::create_dir_all(parent)?;
