@@ -6,7 +6,7 @@ pub(crate) fn execute() -> anyhow::Result<()> {
         file: File::create("./magefile.toml").context("create magefile")?,
     };
 
-    magefile.writeln("[example]")?;
+    magefile.writeln("[\"example.config\"]")?;
     magefile.writeln("target_path = \"~/.config/example.config\"")?;
     magefile.writeln("is_installed_cmd = \"which echo\"")?;
 

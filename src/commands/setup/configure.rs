@@ -68,12 +68,12 @@ fn ensure_path_ok(full_path: &PathBuf) -> Result<()> {
 }
 
 fn is_installed(cmd: &str) -> bool {
-    // FIXME does not work right now (which <program>), probably because path is incorrect
-    std::process::Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .status()
-        .map(|status| status.success())
+    // FIXME still does not work
+    let mut cmd = cmd.split(" ");
+    std::process::Command::new(cmd.next().expect("command should start with something"))
+        .args(cmd)
+        .output()
+        .map(|output| output.status.success())
         .unwrap_or_default()
 }
 
@@ -193,6 +193,7 @@ mod tests {
     #[test]
     fn test_check_installed() {
         assert!(is_installed("true"));
+        assert!(is_installed("which tmux"));
         assert!(!is_installed("false"));
     }
 
