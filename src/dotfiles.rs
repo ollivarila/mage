@@ -6,11 +6,16 @@ use std::{
 use toml::Table;
 use tracing::{debug, debug_span};
 
+/// Represents one program-config in the dotfiles directory, that can be configured by mage.
 #[derive(Debug, Clone)]
 pub struct ProgramOptions {
+    /// Name of the key in magefile.toml
     pub name: String,
+    /// Name of the config file or folder located in dotfiles
     pub path: PathBuf,
+    /// Target path for symlink
     pub target_path: PathBuf,
+    /// Optional command to see if program is installed
     pub is_installed_cmd: Option<String>,
 }
 
@@ -42,16 +47,13 @@ impl TryFrom<DirEntry> for DotfilesEntry {
         }
 
         let Ok(path) = entry.path().canonicalize() else {
-            bail!("failed to canonicalize path")
+            bail!("failed to canonicalize path: {:?}", entry.path())
         };
 
         let key = path
-            .file_stem()
+            .file_name()
             .and_then(|s| s.to_str())
-            .ok_or(anyhow!(
-                "failed to extract file stem as str for: {:?}",
-                path
-            ))?
+            .context("extract filename")?
             .to_string();
 
         debug!(name = ?key, path = ?path, "parsed");
@@ -74,7 +76,7 @@ impl TryFrom<DotfilesOrigin> for ReadDir {
     type Error = anyhow::Error;
     fn try_from(origin: DotfilesOrigin) -> Result<Self, Self::Error> {
         match origin {
-            DotfilesOrigin::Directory(dir) => read_dir(dir).map_err(Into::into),
+            DotfilesOrigin::Directory(dir) => read_dir(dir).context("read dotfiles dir"),
             DotfilesOrigin::Repository(url, path) => clone_repo_and_read(&url, &path),
         }
     }
@@ -251,7 +253,7 @@ mod tests {
         assert_eq!(programs.len(), 1);
 
         let program = &programs[0];
-        assert_eq!(program.name, "example");
+        assert_eq!(program.name, "example.config");
         let target_path = program.target_path.to_str().unwrap();
 
         assert_eq!(target_path, "/tmp/example.config")

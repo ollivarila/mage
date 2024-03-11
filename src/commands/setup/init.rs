@@ -36,13 +36,15 @@ impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
     type Error = anyhow::Error;
 
     fn try_from((magefile, name, path): (&Table, String, PathBuf)) -> Result<Self, Self::Error> {
+        dbg!(magefile);
+
         let program_config = magefile
             .get(&name)
             .context(format!("find {name} from magefile"))?;
 
         let target_path = program_config
             .get("target_path")
-            .map(|p| p.as_str().unwrap())
+            .map(|p| p.as_str().expect("should be able to convert value to str"))
             .map(PathBuf::from)
             .map(get_full_path)
             .context(format!("{name} missing key: target_path"))?;
@@ -68,7 +70,7 @@ mod tests {
     use super::*;
 
     struct Context {
-        path: String,
+        path: PathBuf,
     }
 
     impl Drop for Context {
@@ -78,8 +80,8 @@ mod tests {
     }
 
     fn setup() -> Context {
-        let path = "/tmp/mage".to_string();
-        if fs::read_dir(&path).is_ok() {
+        let path = PathBuf::from("/tmp/mage");
+        if path.exists() {
             fs::remove_dir_all(&path).unwrap_or_default();
         }
         Context { path }
@@ -95,20 +97,18 @@ mod tests {
     }
 
     #[test]
-    fn init_with_invalid_args() {
+    fn setup_init_with_invalid_args() {
         // Invalid origin
         let result = run("asdf", "asdf");
         assert!(result.is_err());
     }
 
     #[test]
-    fn setup_with_valid_args() {
+    fn setup_init_with_valid_args() {
         let mut ctx = setup();
-        ctx.path = "/tmp/valid".to_string();
-        let result = run("examples/test-dotfiles", "/temp/valid");
+        ctx.path = PathBuf::from("/tmp/valid");
+        let programs = run("examples/test-dotfiles", "/temp/valid").unwrap();
 
-        assert!(result.is_ok());
-        let programs = result.unwrap();
         assert_eq!(programs.len(), 1);
     }
 }

@@ -14,7 +14,7 @@ Mage currently makes one assumption when creating symlinks. Which is that all of
 For example
 
 ```toml
-[bash]
+[".bashrc"]
 target_path = "~/.bashrc"
 ```
 
@@ -23,7 +23,7 @@ Means that the origin needs to be in **dotfiles/.bashrc**, making nested configu
 Something like
 
 ```toml
-[nvim]
+["nvim"]
 target_path = "~/.config/nvim"
 ```
 
@@ -38,13 +38,14 @@ It contains entries for each of the configurations you want to set up.
 For example
 
 ```toml
-[bash]
+[.bashrc]
 target_path = "~/.bashrc"
 is_installed_cmd = "which bash"
 ```
 
 ### Entry format
 
+- key: name of the file that the configuration is for
 - target_path: full path (~ is expanded), this is the target for the symlink
 - is_installed_cmd: optional, a command which exits with non zero exit code if the program is not installed. This can be helpful to understand which programs are missing from a fresh system.
 
@@ -75,6 +76,4 @@ cargo install --git https://github.com/ollivarila/mage
 - subcommands
   - sync (pull changes to repo and refresh symlinks)
   - push ?
-  - init
-- tracing for debugging
 - automatic installation of missing programs ?

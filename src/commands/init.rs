@@ -2,12 +2,9 @@ use anyhow::Context;
 use std::{fs::File, io::Write};
 
 pub(crate) fn execute() -> anyhow::Result<()> {
-    let file = File::create("./magefile.toml").context("create magefile")?;
-    write_contents(file)
-}
-
-fn write_contents(file: File) -> anyhow::Result<()> {
-    let mut magefile = Magefile { file };
+    let mut magefile = Magefile {
+        file: File::create("./magefile.toml").context("create magefile")?,
+    };
 
     magefile.writeln("[example]")?;
     magefile.writeln("target_path = \"~/.config/example.config\"")?;
@@ -31,5 +28,26 @@ impl Magefile {
         let len = bytes.len();
         anyhow::ensure!(n == len, "wrote less bytes than expected");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::{fs, path::PathBuf};
+
+    use super::*;
+
+    #[test]
+    fn test_init_cmd() {
+        let res = execute();
+
+        assert!(res.is_ok());
+
+        let path = PathBuf::from("./magefile.toml");
+        let exists = path.exists();
+
+        fs::remove_file(path).unwrap();
+        assert!(exists)
     }
 }

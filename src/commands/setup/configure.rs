@@ -69,8 +69,8 @@ fn is_installed(cmd: &str) -> bool {
     std::process::Command::new("sh")
         .arg("-c")
         .arg(cmd)
-        .output()
-        .map(|out| out.status.success())
+        .status()
+        .map(|status| status.success())
         .unwrap_or_default()
 }
 
@@ -98,7 +98,7 @@ where
         .map(|program| {
             let name = &program.name;
             let span = debug_span!("program", name);
-            let _guard2 = span.enter();
+            let _guard = span.enter();
             let bar = ProgressBar::new_spinner();
             let bar = mp.add(bar);
             let result = match program.configure(&bar) {
@@ -114,7 +114,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, path::PathBuf, time::Duration};
+    use std::hash::{Hash, Hasher};
+    use std::{fs, path::PathBuf};
 
     #[derive(Debug)]
     struct TestContext {
@@ -135,21 +136,25 @@ mod tests {
         fn set_message(&self, _: impl Into<String>) {}
     }
 
+    use std::time::SystemTime;
+
+    fn unique_tmp_path() -> String {
+        let mut hash = std::hash::DefaultHasher::default();
+        SystemTime::now().hash(&mut hash);
+        let s = hash.finish().to_string();
+        format!("/tmp/example{}.config", s)
+    }
+
     fn setup() -> TestContext {
         let dotfiles_path = PathBuf::from("examples/test-dotfiles")
             .canonicalize()
             .unwrap();
-        let target_path = PathBuf::from("/tmp/example.config");
+        let target_path = PathBuf::from(unique_tmp_path());
 
         fs::remove_file(&target_path).unwrap_or_default();
 
-        // Wait for file to be removed
-        while target_path.exists() {
-            std::thread::sleep(Duration::from_millis(100));
-        }
-
         let opts = ProgramOptions {
-            name: "example".to_string(),
+            name: "example.config".to_string(),
             path: dotfiles_path,
             target_path: target_path.clone(),
             is_installed_cmd: None,
@@ -166,7 +171,7 @@ mod tests {
         assert!(&ctx.target_path.exists());
         assert_eq!(
             installed,
-            ConfigureDetails::Installed("example".to_string())
+            ConfigureDetails::Installed("example.config".to_string())
         );
     }
 
@@ -176,9 +181,10 @@ mod tests {
         ctx.opts.is_installed_cmd = Some("false".to_string());
         let bar = MockBar;
         let installed = ctx.opts.configure(&bar).unwrap();
+        dbg!(&installed);
         assert_eq!(
             installed,
-            ConfigureDetails::NotInstalled("example".to_string())
+            ConfigureDetails::NotInstalled("example.config".to_string())
         );
     }
 
