@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use tracing::Level;
 mod commands;
 mod dotfiles;
+mod util;
 
 const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
 
@@ -33,6 +34,7 @@ struct Args {
 enum Command {
     #[command(about = "Creates an example magefile in the working directory")]
     Init,
+    #[command(about = "Removes all of the symlinks created by mage")]
     Clean {
         #[arg(
             short = 'p',
@@ -42,6 +44,7 @@ enum Command {
         )]
         dotfiles_path: String,
     },
+    #[command(about = "Setup your dotfiles")]
     Setup {
         #[arg(
             help = "Can either be url to a repository or a path to existing folder on the system"

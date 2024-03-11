@@ -8,7 +8,6 @@ use self::configure::ConfigureDetails;
 
 pub fn execute(origin: &str, dotfiles_path: &str) -> anyhow::Result<()> {
     debug_span!("setup").in_scope(|| {
-        // TODO: implement filename from magefile
         let programs = init::run(origin, dotfiles_path)?;
         let result = configure(programs);
         display_result(result);
@@ -37,6 +36,6 @@ fn display_result(result: Vec<ConfigureDetails>) {
     }
 
     if !not_installed_msg.is_empty() {
-        println!("The following programs are not installed on this system:\n{not_installed_msg}")
+        println!("Did not find programs for these configs:\n{not_installed_msg}")
     }
 }

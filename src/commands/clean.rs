@@ -1,5 +1,5 @@
 use anyhow::Context;
-use std::{fs, path::PathBuf};
+use std::fs;
 use tracing::{debug, debug_span};
 
 use crate::dotfiles::{read_dotfiles, DotfilesOrigin};
@@ -7,7 +7,7 @@ use crate::dotfiles::{read_dotfiles, DotfilesOrigin};
 pub(crate) fn execute(dotfiles_path: &str) -> anyhow::Result<()> {
     let span = debug_span!("clean");
     let _guard = span.enter();
-    let path = PathBuf::from(dotfiles_path);
+    let path = crate::util::get_full_path(dotfiles_path);
 
     if !path.exists() {
         anyhow::bail!("invalid path")
@@ -20,7 +20,8 @@ pub(crate) fn execute(dotfiles_path: &str) -> anyhow::Result<()> {
         let span = debug_span!("program", name = ?program.name);
         let _guard = span.enter();
 
-        if program.target_path.exists() {
+        // Only remove file if it is a symlink
+        if program.target_path.exists() && program.target_path.is_symlink() {
             fs::remove_dir_all(program.target_path.clone())
                 .context(format!("delete symlink for: {}", program.name))?;
             debug!(symlink = ?program.target_path, "delete");
@@ -35,7 +36,7 @@ pub(crate) fn execute(dotfiles_path: &str) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
 
-    use std::os::unix::fs::symlink;
+    use std::{os::unix::fs::symlink, path::PathBuf};
 
     use super::*;
 

@@ -5,6 +5,8 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{fs, os::unix::fs::symlink, path::PathBuf};
 use tracing::{debug, debug_span};
 
+// FIXME make bar messages pretty
+
 pub trait Configure<T> {
     fn configure(&self, bar: &impl Bar) -> Result<T>;
 }
@@ -66,6 +68,7 @@ fn ensure_path_ok(full_path: &PathBuf) -> Result<()> {
 }
 
 fn is_installed(cmd: &str) -> bool {
+    // FIXME does not work right now (which <program>), probably because path is incorrect
     std::process::Command::new("sh")
         .arg("-c")
         .arg(cmd)
@@ -181,7 +184,6 @@ mod tests {
         ctx.opts.is_installed_cmd = Some("false".to_string());
         let bar = MockBar;
         let installed = ctx.opts.configure(&bar).unwrap();
-        dbg!(&installed);
         assert_eq!(
             installed,
             ConfigureDetails::NotInstalled("example.config".to_string())

@@ -16,28 +16,10 @@ fn init_origin(origin: &str, dotfiles_path: &str) -> Result<ReadDir> {
     origin.try_into()
 }
 
-fn get_full_path(path: PathBuf) -> PathBuf {
-    let home = std::env::var("HOME").unwrap();
-
-    if path.starts_with("~") {
-        let mut full_path = PathBuf::from(home);
-        for item in path.iter() {
-            if item.to_str().unwrap() != "~" {
-                full_path.push(item)
-            }
-        }
-        return full_path;
-    }
-
-    path
-}
-
 impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
     type Error = anyhow::Error;
 
     fn try_from((magefile, name, path): (&Table, String, PathBuf)) -> Result<Self, Self::Error> {
-        dbg!(magefile);
-
         let program_config = magefile
             .get(&name)
             .context(format!("find {name} from magefile"))?;
@@ -46,7 +28,7 @@ impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
             .get("target_path")
             .map(|p| p.as_str().expect("should be able to convert value to str"))
             .map(PathBuf::from)
-            .map(get_full_path)
+            .map(crate::util::get_full_path)
             .context(format!("{name} missing key: target_path"))?;
 
         let is_installed_cmd = program_config
@@ -85,15 +67,6 @@ mod tests {
             fs::remove_dir_all(&path).unwrap_or_default();
         }
         Context { path }
-    }
-
-    #[test]
-    fn test_get_full_path() {
-        let path = PathBuf::from("~/test");
-        let home = std::env::var("HOME").unwrap();
-        let expected = PathBuf::from(format!("{home}/test"));
-        let path = get_full_path(path);
-        assert_eq!(path, expected);
     }
 
     #[test]
