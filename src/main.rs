@@ -23,7 +23,7 @@ fn main() -> anyhow::Result<()> {
 #[derive(Parser, Debug)]
 #[command(version, about)]
 struct Args {
-    #[arg(short, long, default_value = "false", help = "Enable debug logging")]
+    #[arg(short, long, default_value = "false", help = "Show debug information")]
     debug: bool,
 
     #[command(subcommand)]
@@ -44,7 +44,7 @@ enum Command {
         )]
         directory: String,
     },
-    #[command(about = "Setup your dotfiles")]
+    #[command(about = "Link your dotfiles")]
     Link {
         #[arg(
             help = "Location of the dotfiles, can also be repository url",
@@ -52,6 +52,7 @@ enum Command {
         )]
         directory: String,
     },
+    #[command(about = "Clone your dotfiles repository")]
     Clone {
         #[arg(help = "Repository to be cloned, either full url or <github-username>/<repository>")]
         repository: String,
