@@ -117,20 +117,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::hash::{Hash, Hasher};
-    use std::{fs, path::PathBuf};
-
-    #[derive(Debug)]
-    struct TestContext {
-        target_path: PathBuf,
-        opts: ProgramOptions,
-    }
-
-    impl Drop for TestContext {
-        fn drop(&mut self) {
-            fs::remove_file(&self.target_path).unwrap_or_default();
-        }
-    }
+    use crate::util::test_context::Ctx;
 
     struct MockBar;
 
@@ -138,40 +125,13 @@ mod tests {
         fn finish_with_message(&self, _: impl Into<String>) {}
         fn set_message(&self, _: impl Into<String>) {}
     }
-
-    use std::time::SystemTime;
-
-    fn unique_tmp_path() -> String {
-        let mut hash = std::hash::DefaultHasher::default();
-        SystemTime::now().hash(&mut hash);
-        let s = hash.finish().to_string();
-        format!("/tmp/example{}.config", s)
-    }
-
-    fn setup() -> TestContext {
-        let dotfiles_path = PathBuf::from("examples/test-dotfiles")
-            .canonicalize()
-            .unwrap();
-        let target_path = PathBuf::from(unique_tmp_path());
-
-        fs::remove_file(&target_path).unwrap_or_default();
-
-        let opts = ProgramOptions {
-            name: "example.config".to_string(),
-            path: dotfiles_path,
-            target_path: target_path.clone(),
-            is_installed_cmd: None,
-        };
-        TestContext { target_path, opts }
-    }
-
     #[test]
     fn test_configure_program_with_file() {
-        let ctx = setup();
+        let ctx = Ctx::default();
         let bar = MockBar;
         let installed = ctx.opts.configure(&bar).unwrap();
 
-        assert!(&ctx.target_path.exists());
+        assert!(&ctx.target_file.clone().unwrap().exists());
         assert_eq!(
             installed,
             ConfigureDetails::Installed("example.config".to_string())
@@ -180,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_not_installed() {
-        let mut ctx = setup();
+        let mut ctx = Ctx::default();
         ctx.opts.is_installed_cmd = Some("false".to_string());
         let bar = MockBar;
         let installed = ctx.opts.configure(&bar).unwrap();
@@ -199,8 +159,9 @@ mod tests {
 
     #[test]
     fn test_configure_many() {
-        let ctx = setup();
-        assert!(!ctx.target_path.exists());
+        let ctx = Ctx::default();
+        let target_file = ctx.target_file.clone().unwrap();
+        assert!(!target_file.exists());
         let programs = vec![ctx.opts.clone()];
         let configured = configure(programs);
 
@@ -208,7 +169,8 @@ mod tests {
 
         assert_eq!(configured.len(), 1);
         assert_eq!(*program, ConfigureDetails::Installed(ctx.opts.name.clone()));
-        assert!(ctx.target_path.exists());
-        assert!(ctx.target_path.is_symlink());
+
+        assert!(target_file.exists());
+        assert!(target_file.is_symlink());
     }
 }

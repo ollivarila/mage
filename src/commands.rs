@@ -1,4 +1,5 @@
 mod clean;
+mod clone;
 mod init;
 mod link;
 
@@ -17,7 +18,7 @@ impl Exec for crate::Command {
             Self::Clone {
                 repository,
                 directory,
-            } => todo!(), // cmd => Err(anyhow::anyhow!("Unimplemented command: {:?}", cmd)),
+            } => clone::execute(repository, directory),
         }
     }
 }

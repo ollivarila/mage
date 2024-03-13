@@ -78,25 +78,27 @@ impl TryFrom<DotfilesOrigin> for ReadDir {
     fn try_from(origin: DotfilesOrigin) -> Result<Self, Self::Error> {
         match origin {
             DotfilesOrigin::Directory(dir) => read_dir(dir).context("read dotfiles dir"),
-            DotfilesOrigin::Repository(url, path) => clone_repo_and_read(&url, &path),
+            DotfilesOrigin::Repository(url, path) => clone_repo(&url, &path)
+                .map(fs::read_dir)?
+                .context("clone and read repository"),
         }
     }
 }
 
-fn clone_repo_and_read(url: &str, path: &str) -> anyhow::Result<ReadDir> {
+pub(crate) fn clone_repo<'a>(url: &str, path: &'a str) -> anyhow::Result<&'a str> {
     if PathBuf::from(path).exists() {
         bail!("Target path {path} already exists")
     }
+
+    debug!(url = url, "cloning repo");
 
     std::process::Command::new("git")
         .args(["clone", url, path])
         .output()?;
 
-    debug!(path, "cloned repo");
-    let res = fs::read_dir(path)?;
+    debug!("done");
 
-    debug!("read cloned repo");
-    Ok(res)
+    Ok(path)
 }
 
 impl FromStr for DotfilesOrigin {
@@ -113,7 +115,7 @@ impl FromStr for DotfilesOrigin {
                 default_location,
             )),
             url if is_github_repo(url) => Ok(DotfilesOrigin::Repository(
-                url.to_string(),
+                full_repo_url(url),
                 default_location,
             )),
             _ => Err(anyhow!("I do not how to get dotfiles with this: {s}")),
@@ -126,12 +128,16 @@ impl FromStr for DotfilesOrigin {
 }
 
 fn is_url(s: &str) -> bool {
-    s.starts_with("https://") || s.starts_with("http://")
+    s.starts_with("https://") || s.starts_with("http://") || s.starts_with("git@")
 }
 
 fn is_github_repo(_: &str) -> bool {
     // TODO: implement this
     false
+}
+
+fn full_repo_url(s: &str) -> String {
+    format!("git@github.com/{s}.git") // Assume ssh
 }
 
 fn is_dir(s: &str) -> bool {
@@ -189,7 +195,7 @@ mod tests {
 
     #[test]
     fn does_not_clone_if_path_exists() {
-        let result = clone_repo_and_read("empty", "examples/test-dotfiles");
+        let result = clone_repo("empty", "examples/test-dotfiles");
         assert!(result.is_err());
         let msg = result.unwrap_err().to_string();
         assert_eq!(msg, "Target path examples/test-dotfiles already exists");
@@ -199,7 +205,7 @@ mod tests {
     #[ignore]
     fn test_clone_repo() {
         fs::remove_dir_all("/tmp/mage").unwrap_or_default();
-        clone_repo_and_read("https://github.com/ollivarila/brainfckr.git", "/tmp/mage").unwrap();
+        clone_repo("https://github.com/ollivarila/brainfckr.git", "/tmp/mage").unwrap();
         let dir_exists = PathBuf::from("/tmp/mage").exists();
         assert!(dir_exists);
         fs::remove_dir_all("/tmp/mage").unwrap_or_default();

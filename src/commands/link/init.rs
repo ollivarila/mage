@@ -1,6 +1,6 @@
 use crate::dotfiles::{read_dotfiles, DotfilesOrigin, ProgramOptions};
 use anyhow::{Context, Result};
-use std::{fs::ReadDir, path::PathBuf, str::FromStr};
+use std::{fs::ReadDir, path::PathBuf};
 use toml::Table;
 use tracing::debug_span;
 
@@ -47,27 +47,8 @@ impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
 #[cfg(test)]
 mod tests {
 
-    use std::fs;
-
     use super::*;
-
-    struct Context {
-        path: PathBuf,
-    }
-
-    impl Drop for Context {
-        fn drop(&mut self) {
-            fs::remove_dir_all(self.path.clone()).unwrap_or_default();
-        }
-    }
-
-    fn setup() -> Context {
-        let path = PathBuf::from("/tmp/mage");
-        if path.exists() {
-            fs::remove_dir_all(&path).unwrap_or_default();
-        }
-        Context { path }
-    }
+    use crate::util::test_context::Ctx;
 
     #[test]
     fn link_init_with_invalid_args() {
@@ -78,8 +59,7 @@ mod tests {
 
     #[test]
     fn link_init_with_valid_args() {
-        let mut ctx = setup();
-        ctx.path = PathBuf::from("/tmp/valid");
+        let mut _ctx = Ctx::default();
         let programs = run("examples/test-dotfiles").unwrap();
 
         assert_eq!(programs.len(), 1);

@@ -39,7 +39,7 @@ enum Command {
         #[arg(
             short = 'p',
             long,
-            help = "Path where dotfiles are located",
+            help = "Location of the dotfiles",
             default_value = "~/.mage"
         )]
         directory: String,
