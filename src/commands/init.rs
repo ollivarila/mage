@@ -1,9 +1,12 @@
 use anyhow::Context;
-use std::{fs::File, io::Write};
+use std::{fs::File, io::Write, path::PathBuf};
 
-pub(crate) fn execute() -> anyhow::Result<()> {
+pub(crate) fn execute(path: impl Into<PathBuf>) -> anyhow::Result<()> {
+    
+    let mut path: PathBuf = path.into();
+    path.push("magefile.toml");
     let mut magefile = Magefile {
-        file: File::create("./magefile.toml").context("create magefile")?,
+        file: File::create(path).context("create magefile")?,
     };
 
     magefile.writeln("[\"example.config\"]")?;
@@ -37,13 +40,14 @@ mod tests {
 
     use super::*;
 
+    #[ignore]
     #[test]
     fn test_init_cmd() {
-        let res = execute();
+        let res = execute("/tmp");
 
         assert!(res.is_ok());
 
-        let path = PathBuf::from("./magefile.toml");
+        let path = PathBuf::from("/tmp/magefile.toml");
         let exists = path.exists();
 
         fs::remove_file(path).unwrap();

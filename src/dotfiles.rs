@@ -45,10 +45,7 @@ impl TryFrom<DirEntry> for DotfilesEntry {
             let magefile = magefile(entry.path())?;
             return Ok(DotfilesEntry::Magefile(magefile));
         }
-
-        let Ok(path) = entry.path().canonicalize() else {
-            bail!("failed to canonicalize path: {:?}", entry.path())
-        };
+        let path = entry.path();
 
         let key = path
             .file_name()

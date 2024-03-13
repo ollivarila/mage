@@ -1,3 +1,5 @@
+use anyhow::Context;
+
 mod clean;
 mod clone;
 mod init;
@@ -14,7 +16,11 @@ impl Exec for crate::Command {
             Self::Clean {
                 directory: dotfiles_path,
             } => clean::execute(dotfiles_path),
-            Self::Init => init::execute(),
+            Self::Init => {
+                let pwd = std::env::var("PWD").context("PWD environment variable not set")?;
+                init::execute(pwd)
+                
+            },
             Self::Clone {
                 repository,
                 directory,

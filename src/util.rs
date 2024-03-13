@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 pub(crate) fn get_full_path<P: Into<PathBuf>>(path: P) -> PathBuf {
-    let home = std::env::var("HOME").unwrap();
     let path: PathBuf = path.into();
 
     if path.starts_with("~") {
+        let home = std::env::var("HOME").unwrap();
         let mut full_path = PathBuf::from(home);
         for item in path.iter() {
             if item.to_str().unwrap() != "~" {

@@ -8,9 +8,6 @@ mod util;
 
 const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
 
-// TODO remove check installed option
-// TODO replace bar with simpler messages
-
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
