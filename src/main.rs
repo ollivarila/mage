@@ -40,22 +40,27 @@ enum Command {
             short = 'p',
             long,
             help = "Path where dotfiles are located",
-            default_value = "~/dotfiles"
+            default_value = "~/.mage"
         )]
-        dotfiles_path: String,
+        directory: String,
     },
     #[command(about = "Setup your dotfiles")]
-    Setup {
+    Link {
         #[arg(
-            help = "Can either be url to a repository or a path to existing folder on the system"
+            help = "Location of the dotfiles, can also be repository url",
+            default_value = "~/.mage"
         )]
-        origin: String,
+        directory: String,
+    },
+    Clone {
+        #[arg(help = "Repository to be cloned, either full url or <github-username>/<repository>")]
+        repository: String,
         #[arg(
-            short = 'p',
+            short,
             long,
-            help = "Path where dotfiles are cloned into, ignored if origin is a path to an existing folder",
-            default_value = "~/dotfiles"
+            help = "Path where dotfiles are cloned into",
+            default_value = "~/.mage"
         )]
-        dotfiles_path: String,
+        directory: String,
     },
 }

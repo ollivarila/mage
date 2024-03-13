@@ -1,18 +1,18 @@
 use crate::dotfiles::{read_dotfiles, DotfilesOrigin, ProgramOptions};
 use anyhow::{Context, Result};
-use std::{fs::ReadDir, path::PathBuf};
+use std::{fs::ReadDir, path::PathBuf, str::FromStr};
 use toml::Table;
 use tracing::debug_span;
 
-pub fn run(origin: &str, dotfiles_path: &str) -> Result<Vec<ProgramOptions>> {
+pub fn run(directory: &str) -> Result<Vec<ProgramOptions>> {
     debug_span!("init").in_scope(|| {
-        let read_dir = init_origin(origin, dotfiles_path)?;
+        let read_dir = init_dir(directory)?;
         read_dotfiles(read_dir)
     })
 }
 
-fn init_origin(origin: &str, dotfiles_path: &str) -> Result<ReadDir> {
-    let origin: DotfilesOrigin = (origin, dotfiles_path).try_into()?;
+fn init_dir(directory: &str) -> Result<ReadDir> {
+    let origin: DotfilesOrigin = directory.parse()?;
     origin.try_into()
 }
 
@@ -70,17 +70,17 @@ mod tests {
     }
 
     #[test]
-    fn setup_init_with_invalid_args() {
+    fn link_init_with_invalid_args() {
         // Invalid origin
-        let result = run("asdf", "asdf");
+        let result = run("sdfdsf");
         assert!(result.is_err());
     }
 
     #[test]
-    fn setup_init_with_valid_args() {
+    fn link_init_with_valid_args() {
         let mut ctx = setup();
         ctx.path = PathBuf::from("/tmp/valid");
-        let programs = run("examples/test-dotfiles", "/temp/valid").unwrap();
+        let programs = run("examples/test-dotfiles").unwrap();
 
         assert_eq!(programs.len(), 1);
     }

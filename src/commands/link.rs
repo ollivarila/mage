@@ -6,9 +6,9 @@ use tracing::debug_span;
 
 use self::configure::ConfigureDetails;
 
-pub fn execute(origin: &str, dotfiles_path: &str) -> anyhow::Result<()> {
-    debug_span!("setup").in_scope(|| {
-        let programs = init::run(origin, dotfiles_path)?;
+pub fn execute(directory: &str) -> anyhow::Result<()> {
+    debug_span!("link").in_scope(|| {
+        let programs = init::run(directory)?;
         let result = configure(programs);
         display_result(result);
         Ok(())

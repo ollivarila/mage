@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use std::{
     fs::{self, read_dir, DirEntry, ReadDir},
     path::PathBuf,
+    str::FromStr,
 };
 use toml::Table;
 use tracing::{debug, debug_span};
@@ -98,23 +99,27 @@ fn clone_repo_and_read(url: &str, path: &str) -> anyhow::Result<ReadDir> {
     Ok(res)
 }
 
-impl TryFrom<(&str, &str)> for DotfilesOrigin {
-    type Error = anyhow::Error;
-
-    fn try_from((origin, clone_path): (&str, &str)) -> Result<Self, Self::Error> {
-        let span = debug_span!("DotfilesOrigin", origin, target_clone_path = clone_path);
+impl FromStr for DotfilesOrigin {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
+        let span = debug_span!("parse DotfilesOrigin", from = s);
         let _guard = span.enter();
 
-        let result = match origin {
+        let default_location = "~/.mage".to_string();
+        let result = match s {
+            dir if is_dir(dir) => Ok(DotfilesOrigin::Directory(PathBuf::from(dir))),
             url if is_url(url) => Ok(DotfilesOrigin::Repository(
                 url.to_string(),
-                clone_path.to_string(),
+                default_location,
             )),
-            dir if is_dir(dir) => Ok(DotfilesOrigin::Directory(PathBuf::from(dir))),
-            _ => Err(anyhow!("Invalid origin for dotfiles: {origin}")),
+            url if is_github_repo(url) => Ok(DotfilesOrigin::Repository(
+                url.to_string(),
+                default_location,
+            )),
+            _ => Err(anyhow!("I do not how to get dotfiles with this: {s}")),
         };
 
-        debug!(origin = ?result);
+        debug!(got = ?result);
 
         result
     }
@@ -122,6 +127,11 @@ impl TryFrom<(&str, &str)> for DotfilesOrigin {
 
 fn is_url(s: &str) -> bool {
     s.starts_with("https://") || s.starts_with("http://")
+}
+
+fn is_github_repo(_: &str) -> bool {
+    // TODO: implement this
+    false
 }
 
 fn is_dir(s: &str) -> bool {
@@ -197,20 +207,17 @@ mod tests {
 
     #[test]
     fn dotfiles_origin_from_str() {
-        let origin = ("/tmp", "asdf");
-        let df_origin: DotfilesOrigin = origin.try_into().unwrap();
+        let df_origin: DotfilesOrigin = "/tmp".parse().unwrap();
 
         assert_eq!(df_origin, DotfilesOrigin::Directory(PathBuf::from("/tmp")));
 
-        let origin = ("https://google.com", "bar");
-        let df_origin: DotfilesOrigin = origin.try_into().unwrap();
+        let df_origin: DotfilesOrigin = "https://google.com".parse().unwrap();
         let should_be =
-            DotfilesOrigin::Repository("https://google.com".to_string(), "bar".to_string());
+            DotfilesOrigin::Repository("https://google.com".to_string(), "~/.mage".to_string());
         assert_eq!(df_origin, should_be);
 
-        let origin = ("asdf", "bar");
-        let df_origin: Result<DotfilesOrigin, _> = origin.try_into();
-        assert!(df_origin.is_err())
+        let res: Result<DotfilesOrigin, anyhow::Error> = "asdf".parse();
+        assert!(res.is_err())
     }
 
     #[test]

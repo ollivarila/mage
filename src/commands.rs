@@ -1,6 +1,6 @@
 mod clean;
 mod init;
-mod setup;
+mod link;
 
 pub trait Exec {
     fn execute(&self) -> anyhow::Result<()>;
@@ -9,13 +9,15 @@ pub trait Exec {
 impl Exec for crate::Command {
     fn execute(&self) -> anyhow::Result<()> {
         match self {
-            Self::Setup {
-                origin,
-                dotfiles_path,
-            } => setup::execute(origin, dotfiles_path),
-            Self::Clean { dotfiles_path } => clean::execute(dotfiles_path),
+            Self::Link { directory } => link::execute(directory),
+            Self::Clean {
+                directory: dotfiles_path,
+            } => clean::execute(dotfiles_path),
             Self::Init => init::execute(),
-            // cmd => Err(anyhow::anyhow!("Unimplemented command: {:?}", cmd)),
+            Self::Clone {
+                repository,
+                directory,
+            } => todo!(), // cmd => Err(anyhow::anyhow!("Unimplemented command: {:?}", cmd)),
         }
     }
 }
