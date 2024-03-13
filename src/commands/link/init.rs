@@ -31,10 +31,6 @@ impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
             .map(crate::util::get_full_path)
             .context(format!("{name} missing key: target_path"))?;
 
-        let is_installed_cmd = program_config
-            .get("is_installed_cmd")
-            .map(|cmd| cmd.to_string());
-
         Ok(ProgramOptions {
             name,
             path,

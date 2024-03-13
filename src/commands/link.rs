@@ -24,8 +24,7 @@ fn show_errors(result: Vec<anyhow::Result<()>>) {
         })
         .reduce(|acc, e| format!("{acc}\n{e}"));
 
-    match errors {
-        Some(errors) => eprintln!("Some errors occurred:\n{errors}"),
-        _ => {}
+    if let Some(errors) = errors {
+        eprintln!("Some errors occurred:\n{errors}");
     };
 }

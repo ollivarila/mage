@@ -8,7 +8,6 @@ pub(crate) fn execute() -> anyhow::Result<()> {
 
     magefile.writeln("[\"example.config\"]")?;
     magefile.writeln("target_path = \"~/.config/example.config\"")?;
-    magefile.writeln("is_installed_cmd = \"which echo\"")?;
 
     Ok(())
 }
@@ -23,7 +22,7 @@ impl Magefile {
         buf.push('\n');
         let bytes = buf.as_bytes();
 
-        let n = self.file.write(&bytes).context("write to magefile")?;
+        let n = self.file.write(bytes).context("write to magefile")?;
 
         let len = bytes.len();
         anyhow::ensure!(n == len, "wrote less bytes than expected");

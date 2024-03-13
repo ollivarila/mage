@@ -19,7 +19,7 @@ pub(crate) fn get_full_path<P: Into<PathBuf>>(path: P) -> PathBuf {
 
 #[cfg(test)]
 pub(crate) mod test_context {
-    #![warn(dead_code)]
+    #![allow(dead_code)]
     use std::{fs, path::PathBuf};
 
     use crate::dotfiles::ProgramOptions;
