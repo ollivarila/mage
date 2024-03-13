@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, Context, Result};
+use regex::Regex;
 use std::{
     fs::{self, read_dir, DirEntry, ReadDir},
     path::PathBuf,
@@ -16,8 +17,6 @@ pub struct ProgramOptions {
     pub path: PathBuf,
     /// Target path for symlink
     pub target_path: PathBuf,
-    /// Optional command to see if program is installed
-    pub is_installed_cmd: Option<String>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -110,7 +109,7 @@ impl FromStr for DotfilesOrigin {
         let default_location = "~/.mage".to_string();
         let result = match s {
             dir if is_dir(dir) => Ok(DotfilesOrigin::Directory(PathBuf::from(dir))),
-            url if is_url(url) => Ok(DotfilesOrigin::Repository(
+            url if is_valid_repo_url(url) => Ok(DotfilesOrigin::Repository(
                 url.to_string(),
                 default_location,
             )),
@@ -127,13 +126,31 @@ impl FromStr for DotfilesOrigin {
     }
 }
 
-fn is_url(s: &str) -> bool {
-    s.starts_with("https://") || s.starts_with("http://") || s.starts_with("git@")
+fn is_valid_repo_url(s: &str) -> bool {
+    let regexes = vec![
+        Regex::new(r"git@github.com:[A-z-\d]+\/[A-z-\d_]+.git").unwrap(),
+        Regex::new(r"https://github.com/[A-z-\d]+\/[A-z-\d_]+.git").unwrap(),
+    ];
+    return regexes
+        .iter()
+        .map(|r| r.find(s).is_some_and(|m| m.len() == s.len()))
+        .any(|v| v);
 }
 
-fn is_github_repo(_: &str) -> bool {
-    // TODO: implement this
-    false
+fn is_github_repo(s: &str) -> bool {
+    if is_valid_repo_url(s) {
+        return true;
+    }
+
+    let path = PathBuf::from(s);
+
+    if path.exists() {
+        return false;
+    }
+
+    let repo_re = Regex::new(r"[A-z-\d]+\/[A-z-\d_]+").expect("should be able to construct regex");
+
+    repo_re.find(s).is_some_and(|m| m.len() == s.len())
 }
 
 fn full_repo_url(s: &str) -> String {
@@ -202,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
+    #[ignore = "clones repo and requires internet connection"]
     fn test_clone_repo() {
         fs::remove_dir_all("/tmp/mage").unwrap_or_default();
         clone_repo("https://github.com/ollivarila/brainfckr.git", "/tmp/mage").unwrap();
@@ -217,9 +234,11 @@ mod tests {
 
         assert_eq!(df_origin, DotfilesOrigin::Directory(PathBuf::from("/tmp")));
 
-        let df_origin: DotfilesOrigin = "https://google.com".parse().unwrap();
-        let should_be =
-            DotfilesOrigin::Repository("https://google.com".to_string(), "~/.mage".to_string());
+        let df_origin: DotfilesOrigin = "https://github.com/test/repo.git".parse().unwrap();
+        let should_be = DotfilesOrigin::Repository(
+            "https://github.com/test/repo.git".to_string(),
+            "~/.mage".to_string(),
+        );
         assert_eq!(df_origin, should_be);
 
         let res: Result<DotfilesOrigin, anyhow::Error> = "asdf".parse();
@@ -270,5 +289,14 @@ mod tests {
         let target_path = program.target_path.to_str().unwrap();
 
         assert_eq!(target_path, "/tmp/example.config")
+    }
+
+    #[test]
+    fn test_is_not_github_repo() {
+        assert!(!is_github_repo("/tmp/test"));
+        assert!(is_github_repo("test/test"));
+        assert!(!is_github_repo("git@something"));
+        assert!(is_github_repo("git@github.com:test/test-repo.git"));
+        assert!(is_github_repo("https://github.com/test/test-repo.git"));
     }
 }

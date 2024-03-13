@@ -7,8 +7,8 @@ use tracing::{debug, debug_span};
 
 // FIXME make bar messages pretty
 
-pub trait Configure<T> {
-    fn configure(&self, bar: &impl Bar) -> Result<T>;
+pub trait Configure {
+    fn configure(&self, bar: &impl Bar) -> Result<()>;
 }
 
 pub trait Bar {
@@ -26,8 +26,8 @@ impl Bar for ProgressBar {
     }
 }
 
-impl Configure<ConfigureDetails> for ProgramOptions {
-    fn configure(&self, bar: &impl Bar) -> Result<ConfigureDetails> {
+impl Configure for ProgramOptions {
+    fn configure(&self, bar: &impl Bar) -> Result<()> {
         bar.set_message(format!("Configuring {}", self.name));
         let name = self.name.clone();
 
@@ -35,7 +35,7 @@ impl Configure<ConfigureDetails> for ProgramOptions {
         if self.target_path.exists() {
             debug!(target = ?self.target_path, "exists");
             bar.finish_with_message(format!("{} already configured ✔️", self.name));
-            return Ok(ConfigureDetails::Installed(name));
+            return Ok(());
         }
 
         // Check if the path to the config file exists
@@ -46,14 +46,8 @@ impl Configure<ConfigureDetails> for ProgramOptions {
 
         debug!(origin = ?self.path, target = ?self.target_path, "symlink");
 
-        let details = match &self.is_installed_cmd {
-            Some(cmd) if is_installed(cmd) => ConfigureDetails::Installed(name),
-            Some(_) => ConfigureDetails::NotInstalled(name),
-            None => ConfigureDetails::Installed(name), // Assume it is already installed
-        };
-
         bar.finish_with_message(format!("{} configured ✔️", self.name));
-        Ok(details)
+        Ok(())
     }
 }
 
@@ -67,16 +61,6 @@ fn ensure_path_ok(full_path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn is_installed(cmd: &str) -> bool {
-    // FIXME still does not work
-    let mut cmd = cmd.split(" ");
-    std::process::Command::new(cmd.next().expect("command should start with something"))
-        .args(cmd)
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or_default()
-}
-
 #[derive(Debug, PartialEq)]
 pub enum ConfigureDetails {
     Installed(String),
@@ -84,7 +68,7 @@ pub enum ConfigureDetails {
     SomethingWrong(String),
 }
 
-pub fn configure<T>(programs: Vec<T>) -> Vec<ConfigureDetails>
+pub fn configure<T>(programs: Vec<T>) -> Vec<anyhow::Result<()>>
 where
     T: Into<ProgramOptions>,
 {
@@ -104,12 +88,9 @@ where
             let _guard = span.enter();
             let bar = ProgressBar::new_spinner();
             let bar = mp.add(bar);
-            let result = match program.configure(&bar) {
-                Ok(details) => details,
-                Err(e) => ConfigureDetails::SomethingWrong(e.to_string()),
-            };
-            debug!(result = ?result, "configured");
-            result
+            program.configure(&bar)?;
+            debug!("done");
+            Ok(())
         })
         .collect()
 }
@@ -129,32 +110,9 @@ mod tests {
     fn test_configure_program_with_file() {
         let ctx = Ctx::default();
         let bar = MockBar;
-        let installed = ctx.opts.configure(&bar).unwrap();
 
+        assert!(ctx.opts.configure(&bar).is_ok());
         assert!(&ctx.target_file.clone().unwrap().exists());
-        assert_eq!(
-            installed,
-            ConfigureDetails::Installed("example.config".to_string())
-        );
-    }
-
-    #[test]
-    fn test_not_installed() {
-        let mut ctx = Ctx::default();
-        ctx.opts.is_installed_cmd = Some("false".to_string());
-        let bar = MockBar;
-        let installed = ctx.opts.configure(&bar).unwrap();
-        assert_eq!(
-            installed,
-            ConfigureDetails::NotInstalled("example.config".to_string())
-        );
-    }
-
-    #[test]
-    fn test_check_installed() {
-        assert!(is_installed("true"));
-        assert!(is_installed("which tmux"));
-        assert!(!is_installed("false"));
     }
 
     #[test]
@@ -165,11 +123,8 @@ mod tests {
         let programs = vec![ctx.opts.clone()];
         let configured = configure(programs);
 
-        let program = configured.get(0).unwrap();
-
+        assert!(configured.get(0).unwrap().is_ok());
         assert_eq!(configured.len(), 1);
-        assert_eq!(*program, ConfigureDetails::Installed(ctx.opts.name.clone()));
-
         assert!(target_file.exists());
         assert!(target_file.is_symlink());
     }

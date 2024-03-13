@@ -25,7 +25,7 @@ mod test {
 
     use super::*;
 
-    #[ignore = "clones repo always"]
+    #[ignore = "clones repo and requires internet connection"]
     #[test]
     fn it_executes() {
         let mut ctx = Ctx::default();

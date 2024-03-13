@@ -17,7 +17,9 @@ pub(crate) fn get_full_path<P: Into<PathBuf>>(path: P) -> PathBuf {
     path
 }
 
+#[cfg(test)]
 pub(crate) mod test_context {
+    #![warn(dead_code)]
     use std::{fs, path::PathBuf};
 
     use crate::dotfiles::ProgramOptions;
@@ -60,7 +62,6 @@ pub(crate) mod test_context {
                 name: "example.config".to_string(),
                 path: dotfiles_path,
                 target_path: target_path.clone(),
-                is_installed_cmd: None,
             };
 
             Ctx {

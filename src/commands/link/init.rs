@@ -39,7 +39,6 @@ impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
             name,
             path,
             target_path,
-            is_installed_cmd,
         })
     }
 }

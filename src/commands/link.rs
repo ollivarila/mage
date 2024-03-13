@@ -1,41 +1,31 @@
 mod configure;
 mod init;
-
 use configure::configure;
 use tracing::debug_span;
-
-use self::configure::ConfigureDetails;
 
 pub fn execute(directory: &str) -> anyhow::Result<()> {
     debug_span!("link").in_scope(|| {
         let programs = init::run(directory)?;
         let result = configure(programs);
-        display_result(result);
+        show_errors(result);
         Ok(())
     })
 }
 
-fn display_result(result: Vec<ConfigureDetails>) {
-    let mut err_msg = String::new();
-    let mut not_installed_msg = String::new();
-
-    for r in result {
-        match r {
-            ConfigureDetails::SomethingWrong(e) => {
-                err_msg.push_str(&format!("{}\n", e));
+fn show_errors(result: Vec<anyhow::Result<()>>) {
+    let errors = result
+        .iter()
+        .map(|res| {
+            if res.is_err() {
+                res.as_ref().unwrap_err().to_string()
+            } else {
+                "".to_string()
             }
-            ConfigureDetails::NotInstalled(p) => {
-                not_installed_msg.push_str(&format!("{}\n", p));
-            }
-            _ => {}
-        }
-    }
+        })
+        .reduce(|acc, e| format!("{acc}\n{e}"));
 
-    if !err_msg.is_empty() {
-        eprintln!("Some errors occurred:\n{err_msg}")
-    }
-
-    if !not_installed_msg.is_empty() {
-        println!("Did not find programs for these configs:\n{not_installed_msg}")
-    }
+    match errors {
+        Some(errors) => eprintln!("Some errors occurred:\n{errors}"),
+        _ => {}
+    };
 }
