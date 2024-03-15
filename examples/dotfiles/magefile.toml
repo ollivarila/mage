@@ -1,0 +1,6 @@
+[".bashrc"]
+target_path = "~/.bashrc"
+
+["nvim"]
+target_path = "~/.config/nvim"
+
