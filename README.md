@@ -55,8 +55,6 @@ See:
 mage --help
 ```
 
-For most cases
-
 ## Requirements
 
 - git

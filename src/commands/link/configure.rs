@@ -4,8 +4,6 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{fs, os::unix::fs::symlink, path::Path};
 use tracing::{debug, debug_span};
 
-// FIXME make bar messages pretty
-
 pub trait Configure {
     fn configure(&self) -> Result<()>;
 }
