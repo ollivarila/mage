@@ -25,8 +25,15 @@ pub(crate) fn execute(dotfiles_path: &str) -> anyhow::Result<()> {
             fs::remove_dir_all(program.target_path.clone())
                 .context(format!("delete symlink for: {}", program.name))?;
             debug!(symlink = ?program.target_path, "delete");
+        } else {
+            debug!(target = ?program.target_path, "not a symlink");
+            println!(
+                "{} is listed in magefile but is not a symlink, skipping",
+                program.name
+            );
         }
 
+        println!("{} cleaned ✔️", program.name);
         debug!("done")
     }
 

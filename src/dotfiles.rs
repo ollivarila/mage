@@ -121,7 +121,7 @@ impl FromStr for DotfilesOrigin {
                 full_repo_url(url),
                 default_location,
             )),
-            _ => Err(anyhow!("I do not how to get dotfiles with this: {s}")),
+            _ => Err(anyhow!("This url seems to be invalid: {s}")),
         };
 
         debug!(got = ?result);

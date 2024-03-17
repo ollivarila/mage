@@ -13,7 +13,7 @@ impl Configure for ProgramOptions {
         // Check if the config file already exists
         if self.target_path.exists() {
             debug!(target = ?self.target_path, "exists");
-            println!("{} already configured ✔️", self.name);
+            println!("{} already linked ✔️", self.name);
             return Ok(());
         }
 
@@ -25,7 +25,7 @@ impl Configure for ProgramOptions {
 
         debug!(origin = ?self.path, target = ?self.target_path, "symlink");
 
-        println!("{} configured ✔️", self.name);
+        println!("{} linked ✔️", self.name);
         Ok(())
     }
 }

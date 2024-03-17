@@ -22,9 +22,19 @@ fn show_errors(result: Vec<anyhow::Result<()>>) {
                 "".to_string()
             }
         })
-        .reduce(|acc, e| format!("{acc}\n{e}"));
+        .reduce(|acc, e| {
+            if e.is_empty() {
+                acc
+            } else {
+                format!("{acc}\n{e}")
+            }
+        });
 
     if let Some(errors) = errors {
+        if errors.is_empty() {
+            return;
+        }
+
         eprintln!("Some errors occurred:\n{errors}");
     };
 }
