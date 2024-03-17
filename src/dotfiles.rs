@@ -8,6 +8,8 @@ use std::{
 use toml::Table;
 use tracing::{debug, debug_span};
 
+use crate::util::get_full_path;
+
 /// Represents one program-config in the dotfiles directory, that can be configured by mage.
 #[derive(Debug, Clone)]
 pub struct ProgramOptions {
@@ -88,9 +90,14 @@ pub(crate) fn clone_repo<'a>(url: &str, path: &'a str) -> anyhow::Result<&'a str
 
     debug!(url = url, "cloning repo");
 
-    std::process::Command::new("git")
+    let success = std::process::Command::new("git")
         .args(["clone", url, path])
-        .output()?;
+        .status()
+        .map(|s| s.success())?;
+
+    if !success {
+        bail!("Failed to clone repository {url}")
+    }
 
     debug!("done");
 
@@ -105,7 +112,7 @@ impl FromStr for DotfilesOrigin {
 
         let default_location = "~/.mage".to_string();
         let result = match s {
-            dir if is_dir(dir) => Ok(DotfilesOrigin::Directory(PathBuf::from(dir))),
+            dir if is_dir(dir) => Ok(DotfilesOrigin::Directory(get_full_path(dir))),
             url if is_valid_repo_url(url) => Ok(DotfilesOrigin::Repository(
                 url.to_string(),
                 default_location,
@@ -151,12 +158,11 @@ fn is_github_repo(s: &str) -> bool {
 }
 
 fn full_repo_url(s: &str) -> String {
-    format!("git@github.com/{s}.git") // Assume ssh
+    format!("git@github.com:{s}.git") // Assume ssh
 }
 
 fn is_dir(s: &str) -> bool {
-    let path = PathBuf::from(s);
-    path.is_dir()
+    get_full_path(s).is_dir()
 }
 
 pub fn read_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {

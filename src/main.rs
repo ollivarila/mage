@@ -8,6 +8,10 @@ mod util;
 
 const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
 
+// TODO: Push command
+// TODO: Sync command
+// TODO: Test environment
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
