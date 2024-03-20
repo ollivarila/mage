@@ -13,7 +13,7 @@ impl Configure for ProgramOptions {
         // Check if the config file already exists
         if self.target_path.exists() {
             debug!(target = ?self.target_path, "exists");
-            println!("{} already linked ✔️", self.name);
+            println!("{:?} already linked ✔️", self.origin_path);
             return Ok(());
         }
 
@@ -21,11 +21,11 @@ impl Configure for ProgramOptions {
         ensure_path_ok(&self.target_path)?;
 
         // Create symlink from dotfiles to target path
-        symlink(&self.path, &self.target_path)?;
+        symlink(&self.origin_path, &self.target_path)?;
 
-        debug!(origin = ?self.path, target = ?self.target_path, "symlink");
+        debug!(origin = ?self.origin_path, target = ?self.target_path, "symlink");
 
-        println!("{} linked ✔️", self.name);
+        println!("{:?} linked ✔️", self.origin_path);
         Ok(())
     }
 }
@@ -54,8 +54,7 @@ where
     programs
         .into_par_iter()
         .map(|program| {
-            let name = &program.name;
-            let span = debug_span!("program", name);
+            let span = debug_span!("program", origin = ?program.origin_path);
             let _guard = span.enter();
             program.configure()?;
             debug!("done");

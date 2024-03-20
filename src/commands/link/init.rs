@@ -1,42 +1,22 @@
-use crate::dotfiles::{read_dotfiles, DotfilesOrigin, ProgramOptions};
-use anyhow::{Context, Result};
-use std::{fs::ReadDir, path::PathBuf};
-use toml::Table;
+use crate::dotfiles::{
+    ensure_repo_is_setup, find_magefile, generate_options, DotfilesOrigin, ProgramOptions,
+};
+use anyhow::Result;
+use std::path::PathBuf;
 use tracing::debug_span;
 
 pub fn run(directory: &str) -> Result<Vec<ProgramOptions>> {
     debug_span!("init").in_scope(|| {
-        let read_dir = init_dir(directory)?;
-        read_dotfiles(read_dir)
+        let full_path = init_dir(directory)?;
+        let magefile = find_magefile(full_path)?;
+        generate_options(magefile, directory)
     })
 }
 
-fn init_dir(directory: &str) -> Result<ReadDir> {
+/// Clones repository or uses local directory
+fn init_dir(directory: &str) -> Result<PathBuf> {
     let origin: DotfilesOrigin = directory.parse()?;
-    origin.try_into()
-}
-
-impl TryFrom<(&Table, String, PathBuf)> for ProgramOptions {
-    type Error = anyhow::Error;
-
-    fn try_from((magefile, name, path): (&Table, String, PathBuf)) -> Result<Self, Self::Error> {
-        let program_config = magefile
-            .get(&name)
-            .context(format!("find {name} from magefile"))?;
-
-        let target_path = program_config
-            .get("target_path")
-            .map(|p| p.as_str().expect("should be able to convert value to str"))
-            .map(PathBuf::from)
-            .map(crate::util::get_full_path)
-            .context(format!("{name} missing key: target_path"))?;
-
-        Ok(ProgramOptions {
-            name,
-            path,
-            target_path,
-        })
-    }
+    ensure_repo_is_setup(origin)
 }
 
 #[cfg(test)]

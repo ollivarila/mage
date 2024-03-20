@@ -6,10 +6,12 @@ mod commands;
 mod dotfiles;
 mod util;
 
-const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
-
 // TODO: Push command
 // TODO: Sync command
+// FIXME: Proper errors if magefile contains invalid entries
+// TODO: More tests
+
+const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();

@@ -59,8 +59,7 @@ pub(crate) mod test_context {
             let target_path = PathBuf::from(unique_tmp_path());
 
             let opts = ProgramOptions {
-                name: "example.config".to_string(),
-                path: dotfiles_path,
+                origin_path: dotfiles_path,
                 target_path: target_path.clone(),
             };
 

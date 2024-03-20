@@ -1,7 +1,7 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Ok, Result};
 use regex::Regex;
 use std::{
-    fs::{self, read_dir, DirEntry, ReadDir},
+    fs::{self},
     path::PathBuf,
     str::FromStr,
 };
@@ -13,52 +13,16 @@ use crate::util::get_full_path;
 /// Represents one program-config in the dotfiles directory, that can be configured by mage.
 #[derive(Debug, Clone)]
 pub struct ProgramOptions {
-    /// Name of the key in magefile.toml
-    pub name: String,
-    /// Name of the config file or folder located in dotfiles
-    pub path: PathBuf,
+    /// Path of the config file or folder located in dotfiles also the key in magefile
+    pub origin_path: PathBuf,
     /// Target path for symlink
     pub target_path: PathBuf,
-}
-
-#[derive(PartialEq, Debug)]
-pub enum DotfilesEntry {
-    ConfigFileOrDir(String, PathBuf),
-    Magefile(Table),
 }
 
 #[derive(PartialEq, Debug)]
 pub enum DotfilesOrigin {
     Directory(PathBuf),
     Repository(String, String),
-}
-
-impl TryFrom<DirEntry> for DotfilesEntry {
-    type Error = anyhow::Error;
-
-    fn try_from(entry: DirEntry) -> Result<Self, Self::Error> {
-        let is_magefile = entry
-            .file_name()
-            .to_str()
-            .expect("should be able to convert file name to str")
-            .starts_with("magefile");
-
-        if is_magefile {
-            let magefile = magefile(entry.path())?;
-            return Ok(DotfilesEntry::Magefile(magefile));
-        }
-        let path = entry.path();
-
-        let key = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .context("extract filename")?
-            .to_string();
-
-        debug!(name = ?key, path = ?path, "parsed");
-
-        Ok(DotfilesEntry::ConfigFileOrDir(key, path))
-    }
 }
 
 fn magefile(path: PathBuf) -> anyhow::Result<Table> {
@@ -71,15 +35,37 @@ fn magefile(path: PathBuf) -> anyhow::Result<Table> {
     Ok(thing)
 }
 
-impl TryFrom<DotfilesOrigin> for ReadDir {
-    type Error = anyhow::Error;
-    fn try_from(origin: DotfilesOrigin) -> Result<Self, Self::Error> {
-        match origin {
-            DotfilesOrigin::Directory(dir) => read_dir(dir).context("read dotfiles dir"),
-            DotfilesOrigin::Repository(url, path) => clone_repo(&url, &path)
-                .map(fs::read_dir)?
-                .context("clone and read repository"),
+pub(crate) fn find_magefile<P: Into<PathBuf>>(path: P) -> anyhow::Result<Table> {
+    let dir = fs::read_dir(path.into())?;
+    for entry in dir {
+        let entry = entry?;
+        let filename = entry
+            .file_name()
+            .to_str()
+            .expect("should be able to convert dir entry")
+            .to_string();
+
+        if filename.starts_with("magefile") {
+            return Ok(magefile(entry.path())?);
         }
+    }
+
+    Err(anyhow::anyhow!("Magefile not found"))
+}
+
+pub(crate) fn ensure_repo_is_setup(origin: DotfilesOrigin) -> anyhow::Result<PathBuf> {
+    match origin {
+        DotfilesOrigin::Repository(url, path) => {
+            let target_path = PathBuf::from(path);
+            if target_path.exists() {
+                return Ok(target_path);
+            }
+
+            clone_repo(&url, target_path.to_str().expect("should not fail"))?;
+
+            return Ok(target_path);
+        }
+        DotfilesOrigin::Directory(dir) => Ok(dir),
     }
 }
 
@@ -165,46 +151,43 @@ fn is_dir(s: &str) -> bool {
     get_full_path(s).is_dir()
 }
 
-pub fn read_dotfiles(dotfiles: ReadDir) -> Result<Vec<ProgramOptions>> {
+pub fn generate_options(magefile: Table, base_path: &str) -> Result<Vec<ProgramOptions>> {
     let span = debug_span!("read_dotfiles");
     let _guard = span.enter();
 
-    let mut mage_config: Option<Table> = None;
-    let mut programs = vec![];
-
-    for item in dotfiles {
-        let item = item?;
-        let filename = item.file_name();
-        debug!(filename = ?filename, "entry");
-        match item.try_into()? {
-            DotfilesEntry::Magefile(magefile) => mage_config = Some(magefile),
-            DotfilesEntry::ConfigFileOrDir(name, path) => programs.push((name, path)),
-        }
-    }
-    let mage_config = mage_config.context("magefile not found")?;
-
-    // Skip config files that are not in the magefile
-    programs.retain(|(name, _)| {
-        let retain = mage_config.contains_key(name);
-        if !retain {
-            debug!(name, "skipping");
-        }
-        retain
-    });
-
+    let keys = magefile.keys();
     let mut result = vec![];
 
-    for (name, path) in programs.into_iter() {
-        let program = (&mage_config, name, path).try_into()?;
-        result.push(program);
+    for origin_path in keys {
+        let item = magefile.get(origin_path).expect("should always get value");
+        let target_path = item
+            .get("target_path")
+            .context(format!("target_path not found in {item}"))?
+            .as_str()
+            .expect("should be able to convert to str")
+            .to_string();
+        let full_origin_path = get_full_origin_path(base_path, &origin_path);
+        let full_target_path = get_full_path(target_path);
+
+        let opts = ProgramOptions {
+            origin_path: full_origin_path,
+            target_path: full_target_path,
+        };
+        result.push(opts)
     }
 
-    debug!("done");
     Ok(result)
+}
+
+fn get_full_origin_path(base_path: &str, magefile_origin: &str) -> PathBuf {
+    let mut path = PathBuf::from(base_path);
+    path.push(magefile_origin);
+    get_full_path(path)
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     #[test]
     fn invalid_magefile() {
@@ -248,18 +231,6 @@ mod tests {
         assert!(res.is_err())
     }
 
-    #[test]
-    fn dotfiles_origin_into_readdir() {
-        let origin = DotfilesOrigin::Directory(PathBuf::from("examples/test-dotfiles"));
-        let readdir: ReadDir = origin.try_into().unwrap();
-
-        let n = readdir.count();
-
-        // another
-        // example.config
-        // magefile.toml
-        assert_eq!(n, 3)
-    }
     struct Context {
         path: String,
     }
@@ -270,28 +241,13 @@ mod tests {
         }
     }
 
+    #[allow(unused)]
     fn setup() -> Context {
         let path = "/tmp/mage".to_string();
         if fs::read_dir(&path).is_ok() {
             fs::remove_dir_all(&path).unwrap_or_default();
         }
         Context { path }
-    }
-
-    #[test]
-    fn test_read_dotfiles() {
-        let _ctx = setup();
-
-        let dotfiles = fs::read_dir("examples/test-dotfiles").unwrap();
-        let programs = read_dotfiles(dotfiles).unwrap();
-
-        assert_eq!(programs.len(), 1);
-
-        let program = &programs[0];
-        assert_eq!(program.name, "example.config");
-        let target_path = program.target_path.to_str().unwrap();
-
-        assert_eq!(target_path, "/tmp/example.config")
     }
 
     #[test]

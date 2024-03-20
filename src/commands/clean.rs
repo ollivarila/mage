@@ -2,38 +2,41 @@ use anyhow::Context;
 use std::fs;
 use tracing::{debug, debug_span};
 
-use crate::dotfiles::{read_dotfiles, DotfilesOrigin};
+use crate::dotfiles::find_magefile;
+use crate::dotfiles::generate_options;
 
 pub(crate) fn execute(dotfiles_path: &str) -> anyhow::Result<()> {
+    println!("Cleaning dotfiles from: {:?}", dotfiles_path);
     let span = debug_span!("clean");
     let _guard = span.enter();
-    let path = crate::util::get_full_path(dotfiles_path);
+    let full_path = crate::util::get_full_path(dotfiles_path);
 
-    if !path.exists() {
+    if !full_path.exists() {
         anyhow::bail!("invalid path")
     }
 
-    let dotfiles_origin = DotfilesOrigin::Directory(path);
-    let programs = read_dotfiles(dotfiles_origin.try_into()?)?;
+    let magefile = find_magefile(&full_path)?;
+    let programs = generate_options(magefile, full_path.to_str().expect("should not fail"))?;
 
     for program in programs {
-        let span = debug_span!("program", name = ?program.name);
+        let span = debug_span!("program", origin = ?program.origin_path);
         let _guard = span.enter();
 
         // Only remove file if it is a symlink
         if program.target_path.exists() && program.target_path.is_symlink() {
             fs::remove_dir_all(program.target_path.clone())
-                .context(format!("delete symlink for: {}", program.name))?;
+                .context(format!("delete symlink for: {:?}", program.origin_path))?;
             debug!(symlink = ?program.target_path, "delete");
         } else {
             debug!(target = ?program.target_path, "not a symlink");
             println!(
-                "{} is listed in magefile but is not a symlink, skipping",
-                program.name
+                "{:?} is listed in magefile but is not a symlink or it doesn't exists, skipping ✔️",
+                program.origin_path
             );
+            return Ok(());
         }
 
-        println!("{} cleaned ✔️", program.name);
+        println!("{:?} cleaned ✔️", program.origin_path);
         debug!("done")
     }
 
@@ -84,6 +87,6 @@ mod tests {
     fn no_magefile() {
         let invalid_path = "/tmp";
         let err = execute(invalid_path).unwrap_err().to_string();
-        assert_eq!(err, "magefile not found");
+        assert_eq!(err, "Magefile not found");
     }
 }
