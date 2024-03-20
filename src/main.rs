@@ -10,7 +10,6 @@ const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
 
 // TODO: Push command
 // TODO: Sync command
-// TODO: Test environment
 
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
@@ -64,6 +63,16 @@ enum Command {
             short,
             long,
             help = "Path where dotfiles are cloned into",
+            default_value = "~/.mage"
+        )]
+        directory: String,
+    },
+    #[command(about = "Sync your dotfiles repository")]
+    Sync {
+        #[arg(
+            short,
+            long,
+            help = "Location of the dotfiles, can be empty if they are in the default location",
             default_value = "~/.mage"
         )]
         directory: String,
