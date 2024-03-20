@@ -1,5 +1,5 @@
 use crate::dotfiles::ProgramOptions;
-use anyhow::{Context, Result};
+use anyhow::{ensure, Context, Result};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{fs, os::unix::fs::symlink, path::Path};
 use tracing::{debug, debug_span};
@@ -10,6 +10,12 @@ pub trait Configure {
 
 impl Configure for ProgramOptions {
     fn configure(&self) -> Result<()> {
+        // Ensure the origin path exists
+        ensure!(
+            self.origin_path.exists(),
+            format!("{} does not exist", self.origin_path.display())
+        );
+
         // Check if the config file already exists
         if self.target_path.exists() {
             debug!(target = ?self.target_path, "exists");
@@ -33,23 +39,19 @@ impl Configure for ProgramOptions {
 fn ensure_path_ok(full_path: &Path) -> Result<()> {
     let parent = full_path.parent().context("get parent path")?;
     if !parent.exists() {
-        debug!(path = ?parent, "created");
         fs::create_dir_all(parent)?;
+        debug!(path = ?parent, "created");
     }
 
     Ok(())
 }
 
-pub fn configure<T>(programs: Vec<T>) -> Vec<anyhow::Result<()>>
+pub fn configure<T>(programs: T) -> Vec<anyhow::Result<()>>
 where
-    T: Into<ProgramOptions>,
+    T: IntoParallelIterator<Item = ProgramOptions>,
 {
     let span = debug_span!("configure");
     let _guard = span.enter();
-    let programs = programs
-        .into_iter()
-        .map(|t| t.into())
-        .collect::<Vec<ProgramOptions>>();
 
     programs
         .into_par_iter()

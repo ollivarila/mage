@@ -1,46 +1,58 @@
+use anyhow::ensure;
 use anyhow::Context;
 use std::fs;
 use tracing::{debug, debug_span};
 
 use crate::dotfiles::find_magefile;
 use crate::dotfiles::generate_options;
+use crate::dotfiles::ProgramOptions;
+use crate::util::show_errors;
 
 pub(crate) fn execute(dotfiles_path: &str) -> anyhow::Result<()> {
-    println!("Cleaning dotfiles from: {:?}", dotfiles_path);
     let span = debug_span!("clean");
     let _guard = span.enter();
     let full_path = crate::util::get_full_path(dotfiles_path);
 
-    if !full_path.exists() {
-        anyhow::bail!("invalid path")
-    }
+    ensure!(
+        full_path.exists(),
+        format!("invalid path: {}", full_path.display())
+    );
 
     let magefile = find_magefile(&full_path)?;
     let programs = generate_options(magefile, full_path.to_str().expect("should not fail"))?;
+    let errors = programs.iter().map(Undo::undo).collect::<Vec<_>>();
+    show_errors(errors);
 
-    for program in programs {
-        let span = debug_span!("program", origin = ?program.origin_path);
+    Ok(())
+}
+
+trait Undo {
+    fn undo(&self) -> anyhow::Result<()>;
+}
+
+impl Undo for ProgramOptions {
+    fn undo(&self) -> anyhow::Result<()> {
+        let span = debug_span!("program", origin = ?self.origin_path);
         let _guard = span.enter();
 
         // Only remove file if it is a symlink
-        if program.target_path.exists() && program.target_path.is_symlink() {
-            fs::remove_dir_all(program.target_path.clone())
-                .context(format!("delete symlink for: {:?}", program.origin_path))?;
-            debug!(symlink = ?program.target_path, "delete");
+        if self.target_path.exists() && self.target_path.is_symlink() {
+            fs::remove_dir_all(self.target_path.clone())
+                .context(format!("delete symlink for: {:?}", self.origin_path))?;
+            debug!(symlink = ?self.target_path, "delete");
         } else {
-            debug!(target = ?program.target_path, "not a symlink");
+            debug!(target = ?self.target_path, "not a symlink");
             println!(
-                "{:?} is listed in magefile but is not a symlink or it doesn't exists, skipping ✔️",
-                program.origin_path
+                "{:?} is not a symlink or it doesn't exists, skipping ✔️",
+                self.origin_path
             );
             return Ok(());
         }
 
-        println!("{:?} cleaned ✔️", program.origin_path);
-        debug!("done")
+        println!("{:?} cleaned ✔️", self.origin_path);
+        debug!("done");
+        Ok(())
     }
-
-    Ok(())
 }
 
 #[cfg(test)]

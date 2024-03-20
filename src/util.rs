@@ -1,5 +1,33 @@
 use std::path::PathBuf;
 
+/// Displays errors if there are any
+pub(crate) fn show_errors(result: Vec<anyhow::Result<()>>) {
+    let errors = result
+        .iter()
+        .map(|res| {
+            if res.is_err() {
+                res.as_ref().unwrap_err().to_string()
+            } else {
+                "".to_string()
+            }
+        })
+        .reduce(|acc, e| {
+            if e.is_empty() {
+                acc
+            } else {
+                format!("{acc}\n{e}")
+            }
+        });
+
+    if let Some(errors) = errors {
+        if errors.is_empty() {
+            return;
+        }
+
+        eprintln!("Some errors occurred:\n{errors}");
+    };
+}
+
 pub(crate) fn get_full_path<P: Into<PathBuf>>(path: P) -> PathBuf {
     let path: PathBuf = path.into();
 
