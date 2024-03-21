@@ -13,7 +13,7 @@ pub(crate) fn execute(dotfiles_path: &str) -> anyhow::Result<()> {
     let _guard = span.enter();
     let full_path: FullPath = dotfiles_path.into();
 
-    ensure!(full_path.as_ref().exists(), "invalid path: {:?}", full_path);
+    ensure!(full_path.as_ref().exists(), "invalid path: {}", full_path);
 
     let magefile = find_magefile(full_path.as_ref())?;
     let programs = ProgramOptions::generate(magefile, full_path)?;
@@ -36,18 +36,18 @@ impl Undo for ProgramOptions {
         // Only remove file if it is a symlink
         if path_ref.exists() && path_ref.is_symlink() {
             fs::remove_dir_all(self.target_path.clone())
-                .context(format!("delete symlink for: {:?}", self.origin_path))?;
+                .context(format!("delete symlink for: {}", self.origin_path))?;
             debug!(symlink = ?self.target_path, "delete");
         } else {
             debug!(target = ?self.target_path, "not a symlink");
             println!(
-                "{:?} is not a symlink or it doesn't exists, skipping ✔️",
+                "{} is not a symlink or it doesn't exists, skipping ✔️",
                 self.origin_path
             );
             return Ok(());
         }
 
-        println!("{:?} cleaned ✔️", self.origin_path);
+        println!("{} cleaned ✔️", self.origin_path);
         debug!("done");
         Ok(())
     }

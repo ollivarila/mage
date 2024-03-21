@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 
 /// Displays errors if there are any
 pub(crate) fn show_errors(result: Vec<anyhow::Result<()>>) {
@@ -36,6 +39,12 @@ pub(crate) fn get_full_path<P: Into<PathBuf>>(path: P) -> PathBuf {
 #[derive(Debug, PartialEq, Clone)]
 pub(crate) struct FullPath {
     path: PathBuf,
+}
+
+impl Display for FullPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.path.display())
+    }
 }
 
 impl FullPath {

@@ -8,6 +8,11 @@ pub(crate) fn execute(directory: &str) -> Result<(), anyhow::Error> {
     let syncer = Syncer::with_dir(directory);
     syncer.pull()?;
 
+    println!("Running clean...");
+    crate::commands::clean::execute(directory)?;
+    println!();
+
+    println!("Running link...");
     crate::commands::link::execute(directory)
 }
 

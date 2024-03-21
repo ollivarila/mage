@@ -13,14 +13,14 @@ impl Configure for ProgramOptions {
         // Ensure the origin path exists
         ensure!(
             self.origin_path.as_ref().exists(),
-            "{:?} does not exist",
-            self.origin_path.as_ref()
+            "{} does not exist",
+            self.origin_path
         );
 
         // Check if the config file already exists
         if self.target_path.as_ref().exists() {
             debug!(target = ?self.target_path, "exists");
-            println!("{:?} already linked ✔️", self.origin_path);
+            println!("{} already linked ✔️", self.origin_path);
             return Ok(());
         }
 
@@ -32,7 +32,7 @@ impl Configure for ProgramOptions {
 
         debug!(origin = ?self.origin_path, target = ?self.target_path, "symlink");
 
-        println!("{:?} linked ✔️", self.origin_path);
+        println!("{} linked ✔️", self.origin_path);
         Ok(())
     }
 }
