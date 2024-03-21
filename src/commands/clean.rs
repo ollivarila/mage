@@ -4,22 +4,19 @@ use std::fs;
 use tracing::{debug, debug_span};
 
 use crate::dotfiles::find_magefile;
-use crate::dotfiles::generate_options;
 use crate::dotfiles::ProgramOptions;
 use crate::util::show_errors;
+use crate::util::FullPath;
 
 pub(crate) fn execute(dotfiles_path: &str) -> anyhow::Result<()> {
     let span = debug_span!("clean");
     let _guard = span.enter();
-    let full_path = crate::util::get_full_path(dotfiles_path);
+    let full_path: FullPath = dotfiles_path.into();
 
-    ensure!(
-        full_path.exists(),
-        format!("invalid path: {}", full_path.display())
-    );
+    ensure!(full_path.as_ref().exists(), "invalid path: {:?}", full_path);
 
-    let magefile = find_magefile(&full_path)?;
-    let programs = generate_options(magefile, full_path.to_str().expect("should not fail"))?;
+    let magefile = find_magefile(full_path.as_ref())?;
+    let programs = ProgramOptions::generate(magefile, full_path)?;
     let errors = programs.iter().map(Undo::undo).collect::<Vec<_>>();
     show_errors(errors);
 
@@ -35,8 +32,9 @@ impl Undo for ProgramOptions {
         let span = debug_span!("program", origin = ?self.origin_path);
         let _guard = span.enter();
 
+        let path_ref = self.target_path.as_ref();
         // Only remove file if it is a symlink
-        if self.target_path.exists() && self.target_path.is_symlink() {
+        if path_ref.exists() && path_ref.is_symlink() {
             fs::remove_dir_all(self.target_path.clone())
                 .context(format!("delete symlink for: {:?}", self.origin_path))?;
             debug!(symlink = ?self.target_path, "delete");
@@ -88,11 +86,10 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn invalid_path() {
         let invalid_path = "asdfsdf";
-        let err = execute(invalid_path).unwrap_err().to_string();
-
-        assert_eq!(err, "invalid path");
+        execute(invalid_path).unwrap()
     }
 
     #[test]

@@ -14,9 +14,7 @@ impl Exec for crate::Command {
     fn execute(&self) -> anyhow::Result<()> {
         match self {
             Self::Link { directory } => link::execute(directory),
-            Self::Clean {
-                directory: dotfiles_path,
-            } => clean::execute(dotfiles_path),
+            Self::Clean { directory } => clean::execute(directory),
             Self::Init => {
                 let pwd = std::env::var("PWD").context("PWD environment variable not set")?;
                 init::execute(pwd)

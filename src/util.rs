@@ -1,33 +1,21 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Displays errors if there are any
 pub(crate) fn show_errors(result: Vec<anyhow::Result<()>>) {
-    let errors = result
-        .iter()
-        .map(|res| {
-            if res.is_err() {
-                res.as_ref().unwrap_err().to_string()
-            } else {
-                "".to_string()
-            }
-        })
-        .reduce(|acc, e| {
-            if e.is_empty() {
-                acc
-            } else {
-                format!("{acc}\n{e}")
-            }
-        });
+    let mut msg = String::new();
 
-    if let Some(errors) = errors {
-        if errors.is_empty() {
-            return;
+    for res in result {
+        if let Err(e) = res {
+            msg.push_str(format!("{}\n", e).as_str());
         }
+    }
 
-        eprintln!("Some errors occurred:\n{errors}");
-    };
+    if !msg.is_empty() {
+        eprintln!("Some errors occurred:\n{msg}");
+    }
 }
 
+/// Expands `~` to the home directory
 pub(crate) fn get_full_path<P: Into<PathBuf>>(path: P) -> PathBuf {
     let path: PathBuf = path.into();
 
@@ -43,6 +31,40 @@ pub(crate) fn get_full_path<P: Into<PathBuf>>(path: P) -> PathBuf {
     }
 
     path
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub(crate) struct FullPath {
+    path: PathBuf,
+}
+
+impl FullPath {
+    pub(crate) fn path(self) -> PathBuf {
+        self.path
+    }
+    pub fn as_path(&self) -> &Path {
+        self.path.as_path()
+    }
+
+    pub fn to_str(&self) -> &str {
+        self.path
+            .to_str()
+            .expect("should not fail to convert path to str")
+    }
+}
+
+impl AsRef<Path> for FullPath {
+    fn as_ref(&self) -> &Path {
+        self.path.as_path()
+    }
+}
+
+impl<T: Into<PathBuf>> From<T> for FullPath {
+    fn from(value: T) -> Self {
+        Self {
+            path: get_full_path(value.into()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -87,8 +109,8 @@ pub(crate) mod test_context {
             let target_path = PathBuf::from(unique_tmp_path());
 
             let opts = ProgramOptions {
-                origin_path: dotfiles_path,
-                target_path: target_path.clone(),
+                origin_path: dotfiles_path.into(),
+                target_path: target_path.clone().into(),
             };
 
             Ctx {
@@ -119,6 +141,10 @@ mod test {
         let home = std::env::var("HOME").unwrap();
         let expected = PathBuf::from(format!("{home}/test"));
         let path = get_full_path("~/test");
+        assert_eq!(path, expected);
+
+        let expected = PathBuf::from("/tmp/test");
+        let path = get_full_path("/tmp/test");
         assert_eq!(path, expected);
     }
 }

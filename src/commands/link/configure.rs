@@ -12,19 +12,20 @@ impl Configure for ProgramOptions {
     fn configure(&self) -> Result<()> {
         // Ensure the origin path exists
         ensure!(
-            self.origin_path.exists(),
-            format!("{} does not exist", self.origin_path.display())
+            self.origin_path.as_ref().exists(),
+            "{:?} does not exist",
+            self.origin_path.as_ref()
         );
 
         // Check if the config file already exists
-        if self.target_path.exists() {
+        if self.target_path.as_ref().exists() {
             debug!(target = ?self.target_path, "exists");
             println!("{:?} already linked ✔️", self.origin_path);
             return Ok(());
         }
 
         // Check if the path to the config file exists
-        ensure_path_ok(&self.target_path)?;
+        ensure_path_ok(&self.target_path.as_ref())?;
 
         // Create symlink from dotfiles to target path
         symlink(&self.origin_path, &self.target_path)?;

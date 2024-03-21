@@ -2,7 +2,6 @@ use anyhow::Context;
 use std::{fs::File, io::Write, path::PathBuf};
 
 pub(crate) fn execute(path: impl Into<PathBuf>) -> anyhow::Result<()> {
-    
     let mut path: PathBuf = path.into();
     path.push("magefile.toml");
     let mut magefile = Magefile {
@@ -40,7 +39,6 @@ mod tests {
 
     use super::*;
 
-    #[ignore]
     #[test]
     fn test_init_cmd() {
         let res = execute("/tmp");

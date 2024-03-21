@@ -2,13 +2,40 @@ use std::{path::PathBuf, process::Command};
 
 use anyhow::Context;
 
-use crate::util::get_full_path;
+use crate::util::FullPath;
 
 pub(crate) fn execute(directory: &str) -> Result<(), anyhow::Error> {
-    let path = get_full_path(directory);
-    git_pull(&path)?;
-    // TODO: Run configure
-    todo!()
+    let syncer = Syncer::with_dir(directory);
+    syncer.pull()?;
+
+    crate::commands::link::execute(directory)
+}
+
+struct Syncer {
+    directory: FullPath,
+    pull_fn: Box<dyn FnOnce(&PathBuf) -> anyhow::Result<()>>,
+}
+
+impl Default for Syncer {
+    fn default() -> Self {
+        Self {
+            directory: "~/.mage".into(),
+            pull_fn: Box::new(git_pull),
+        }
+    }
+}
+
+impl Syncer {
+    fn with_dir<D: Into<FullPath>>(directory: D) -> Self {
+        Self {
+            directory: directory.into(),
+            ..Default::default()
+        }
+    }
+
+    fn pull(self) -> anyhow::Result<()> {
+        (self.pull_fn)(&self.directory.path())
+    }
 }
 
 fn git_pull(dir: &PathBuf) -> anyhow::Result<()> {
@@ -19,4 +46,17 @@ fn git_pull(dir: &PathBuf) -> anyhow::Result<()> {
         .context("git pull failed")?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_syncer_with_dir() {
+        let dir = FullPath::from("/tmp");
+        let syncer = Syncer::with_dir(dir);
+
+        assert_eq!(syncer.directory.path(), PathBuf::from("/tmp"));
+    }
 }

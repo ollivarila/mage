@@ -1,20 +1,20 @@
-use crate::dotfiles::{
-    ensure_repo_is_setup, find_magefile, generate_options, DotfilesOrigin, ProgramOptions,
+use crate::{
+    dotfiles::{ensure_repo_is_setup, find_magefile, DotfilesOrigin, ProgramOptions},
+    util::FullPath,
 };
 use anyhow::Result;
-use std::path::PathBuf;
 use tracing::debug_span;
 
-pub fn run(directory: &str) -> Result<Vec<ProgramOptions>> {
+pub fn run(directory_or_repository: &str) -> Result<Vec<ProgramOptions>> {
     debug_span!("init").in_scope(|| {
-        let full_path = init_dir(directory)?;
-        let magefile = find_magefile(full_path)?;
-        generate_options(magefile, directory)
+        let full_path = init_dir(directory_or_repository)?;
+        let magefile = find_magefile(full_path.as_ref())?;
+        ProgramOptions::generate(magefile, full_path)
     })
 }
 
 /// Clones repository or uses local directory
-fn init_dir(directory: &str) -> Result<PathBuf> {
+fn init_dir(directory: &str) -> Result<FullPath> {
     let origin: DotfilesOrigin = directory.parse()?;
     ensure_repo_is_setup(origin)
 }
