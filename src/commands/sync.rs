@@ -4,6 +4,7 @@ use anyhow::Context;
 
 use crate::util::FullPath;
 
+// TODO: maybe do some diffing
 pub(crate) fn execute(directory: &str) -> Result<(), anyhow::Error> {
     let syncer = Syncer::with_dir(directory);
     syncer.pull()?;

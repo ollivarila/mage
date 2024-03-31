@@ -7,7 +7,6 @@ mod dotfiles;
 mod util;
 
 // TODO: Push command
-// TODO: Sync command
 // TODO: More tests
 
 const DEBUG: bool = std::option_env!("MAGE_DEBUG").is_some();
