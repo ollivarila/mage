@@ -109,7 +109,7 @@ pub(crate) fn clone_repo<'a>(url: &str, path: &'a str) -> anyhow::Result<&'a str
     debug!(url = url, "cloning repo");
 
     let success = std::process::Command::new("git")
-        .args(["clone", url, path])
+        .args(["clone", "--recurse-submodules", url, path])
         .status()
         .map(|s| s.success())?;
 
